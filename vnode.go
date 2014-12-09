@@ -1,4 +1,4 @@
-package dentrite
+package dendrite
 
 // VNode structure
 type Vnode struct{}

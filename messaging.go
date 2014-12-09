@@ -1,4 +1,4 @@
-package dentrite
+package dendrite
 
 type Encoder interface {
 }
