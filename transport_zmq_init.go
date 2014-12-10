@@ -122,9 +122,8 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		sched_ticker := time.NewTicker(60 * time.Second)
 		workers := make(map[*workerComm]bool)
 		// fire up initial set of workers
-		//for i := 0; i < transport.minHandlers; i++ {
-		for i := 0; i < 15; i++ {
-			//go handleZMQreq(transport)
+		for i := 0; i < transport.minHandlers; i++ {
+			go handleZMQreq(transport)
 		}
 		for {
 			select {
