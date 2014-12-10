@@ -124,7 +124,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		// fire up initial set of workers
 		//for i := 0; i < transport.minHandlers; i++ {
 		for i := 0; i < 15; i++ {
-			go handleZMQreq(transport)
+			//go handleZMQreq(transport)
 		}
 		for {
 			select {
@@ -158,6 +158,12 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 					}
 				}
 			case <-sched_ticker.C:
+				// check if requests are piling up and start more workers if that's the case
+				if transport.activeRequests > 3*len(workers) {
+					for i := 0; i < transport.incrHandlers; i++ {
+						go handleZMQreq(transport)
+					}
+				}
 			}
 		}
 	}()
