@@ -1,0 +1,61 @@
+package dendrite;
+
+message MsgPing {
+  required int64 version = 1;
+}
+
+message MsgAck {
+  required bool val = 1;
+}
+
+
+message MsgJoinRequest {
+  required string clusterName = 1;
+  required string uuid = 2;
+  required string addr = 3;
+  required string location = 4;
+}
+
+message MsgNodeJoined {
+  required string clusterName = 1;
+  required int64  version = 2;
+  required string uuid = 3;
+  required string addr = 4;
+  required string location = 5;
+  required bytes  predcessor_key = 6;
+  required string predcessor_uuid = 7;
+  required string predcessor_addr = 8;
+  required bytes  successor_key = 9;
+  required string successor_uuid = 10;
+  required string successor_addr = 11;
+  
+}
+
+message MsgFindSuccessorRequest {
+  required string clusterName = 1;
+  required int64 version = 2;
+  required bytes key = 3;
+}
+
+message MsgFindSuccessorReply {
+  required string clusterName = 1;
+  required int64 version = 2;
+  required bytes  successor_key = 3;
+  required string successor_uuid = 4;
+  required string successor_addr = 5;
+  required bool authoritative = 6;
+}
+
+message MsgSPRequest {
+  required string clusterName = 1;
+}
+
+message MsgSPReply {
+  required string clusterName = 1;
+  required bytes  successor_key = 2;
+  required string successor_uuid = 3;
+  required string successor_addr = 4;
+  required bytes  predcessor_key = 5;
+  required string predcessor_uuid = 6;
+  required string predcessor_addr = 7;
+}

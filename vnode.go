@@ -34,3 +34,13 @@ func (vn *localVnode) init(idx int) {
 	vn.successors = make([]*Vnode, vn.ring.config.NumSuccessors)
 	vn.finger = make([]*Vnode, 160) // keyspace size is 160 with SHA1
 }
+
+// Schedules the Vnode to do regular maintenence
+func (vn *localVnode) schedule() {
+	// Setup our stabilize timer
+	vn.timer = time.AfterFunc(randStabilize(vn.ring.config), vn.stabilize)
+}
+
+func (vn *localVnode) stabilize() {
+	defer vn.stabilize()
+}
