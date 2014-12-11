@@ -17,6 +17,7 @@ const (
 	workerRegisterReq
 	workerRegisterAllowed
 	workerRegisterDenied
+	workerCtlShutdown
 )
 
 // ZeroMQ Transport implementation
@@ -123,7 +124,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		workers := make(map[*workerComm]bool)
 		// fire up initial set of workers
 		for i := 0; i < transport.minHandlers; i++ {
-			go handleZMQreq(transport)
+			go zmq_worker(transport)
 		}
 		for {
 			select {
@@ -160,7 +161,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 				// check if requests are piling up and start more workers if that's the case
 				if transport.activeRequests > 3*len(workers) {
 					for i := 0; i < transport.incrHandlers; i++ {
-						go handleZMQreq(transport)
+						go zmq_worker(transport)
 					}
 				}
 			}
@@ -175,7 +176,7 @@ type workerComm struct {
 	worker_ctl chan controlType // worker's control channel for communication with scheduler
 }
 
-func handleZMQreq(transport *ZMQTransport) {
+func zmq_worker(transport *ZMQTransport) {
 	// setup REP socket
 	rep_sock, err := transport.zmq_context.NewSocket(zmq.REP)
 	if err != nil {
@@ -206,7 +207,7 @@ func handleZMQreq(transport *ZMQTransport) {
 	}
 
 	// setup socket read channel
-	read_c := make(chan []byte)
+	rpc_c := make(chan []byte)
 	poller := zmq.NewPoller()
 	poller.Add(rep_sock, zmq.POLLIN)
 	cancel_c := make(chan bool, 1)
@@ -223,7 +224,9 @@ func handleZMQreq(transport *ZMQTransport) {
 					continue
 				}
 				// emit data
-				read_c <- msg
+				rpc_c <- msg
+				response := <-rpc_c
+				socket.Socket.SendBytes(response, 0)
 			}
 			// check for cancel request
 			select {
@@ -241,22 +244,28 @@ func handleZMQreq(transport *ZMQTransport) {
 	ticker := time.NewTicker(transport.workerIdleTimeout)
 	for {
 		select {
-		case data := <-read_c:
+		case request := <-rpc_c:
 			// handle data
-			log.Println("Got data", data)
+			log.Println("Got data", request)
+
 			ticker.Stop()
 			ticker = time.NewTicker(transport.workerIdleTimeout)
 
 		case controlMsg := <-comm.worker_ctl:
-			// got control message, probably shutdown instruction
-			log.Println("Got control msg", controlMsg)
+			if controlMsg == workerCtlShutdown {
+				close(comm.worker_out)
+				cancel_c <- true
+				close(cancel_c)
+				log.Println("TransportListener: worker shutdown")
+				return
+			}
 		case <-ticker.C:
 			// we're idling, lets request shutdown
 			comm.worker_out <- workerShutdownReq
 			transport.control_c <- comm
 			v := <-comm.worker_in
 			if v == workerShutdownAllowed {
-				log.Println("Shuting down now....")
+				log.Println("TransportListener: worker shutdown due to idle state")
 				close(comm.worker_out)
 				cancel_c <- true
 				close(cancel_c)

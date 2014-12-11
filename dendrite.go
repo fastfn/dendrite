@@ -1,6 +1,8 @@
 package dendrite
 
 import (
+	"bytes"
+	"sort"
 	"time"
 )
 
@@ -40,10 +42,69 @@ type Config struct {
 
 func DefaultConfig(hostname string) *Config {
 	return &Config{
-		Hostname:      hostname,
-		NumVnodes:     8,
+		Hostname: hostname,
+		// NumVnodes should be set around logN
+		// N is approximate number of real nodes in cluster
+		// this way we get O(logN) lookup speed
+		NumVnodes:     3,
 		StabilizeMin:  15 * time.Second,
 		StabilizeMax:  45 * time.Second,
-		NumSuccessors: 8,
+		NumSuccessors: 8, // number of known successors to keep track with
 	}
+}
+
+type Ring struct {
+	config    *Config
+	transport Transport
+	vnodes    []*localVnode
+	shutdown  chan bool
+}
+
+// implement sort.Interface (Len(), Less() and Swap())
+func (r *Ring) Less(i, j int) bool {
+	return bytes.Compare(r.vnodes[i].Id, r.vnodes[j].Id) == -1
+}
+
+func (r *Ring) Swap(i, j int) {
+	r.vnodes[i], r.vnodes[j] = r.vnodes[j], r.vnodes[i]
+}
+
+func (r *Ring) Len() int {
+	return len(r.vnodes)
+}
+
+func CreateRing(config *Config, transport Transport) (*Ring, error) {
+	r := &Ring{
+		config:    config,
+		transport: transport,
+		vnodes:    make([]*localVnode, config.NumVnodes),
+		shutdown:  make(chan bool),
+	}
+	// initialize vnodes
+	for i := 0; i < config.NumVnodes; i++ {
+		vn := &localVnode{}
+		r.vnodes[i] = vn
+		vn.ring = r
+		vn.init(i)
+	}
+	sort.Sort(r)
+
+	// for each vnode, setup successors
+	numV := len(r.vnodes)
+	numSuc := min(r.config.NumSuccessors, numV-1)
+	for idx, vnode := range r.vnodes {
+		for i := 0; i < numSuc; i++ {
+			vnode.successors[i] = &r.vnodes[(idx+i+1)%numV].Vnode
+		}
+	}
+
+	// schedule vnode stabilizers
+	for i := 0; i < len(r.vnodes); i++ {
+		r.vnodes[i].schedule()
+	}
+	return r, nil
+}
+
+func JoinRing(config *Config, transport Transport, existing string) (*Ring, error) {
+	return &Ring{}, nil
 }
