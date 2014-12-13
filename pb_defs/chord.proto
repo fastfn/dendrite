@@ -2,36 +2,53 @@ package dendrite;
 
 // dendrite/chord protocol messages
 
+// single vnode message
+// usually included in other messages as a compact type
 message PBProtoVnode {
 		required bytes id = 1;
 		required string host = 2;
 }
 
-
+// ping message
 message PBProtoPing {
   required int64 version = 1;
 }
 
+// dummy response, with additional ok state
 message PBProtoAck {
 	required int64 version = 1;
 	required bool ok = 2;
 }
 
+// error response
 message PBProtoErr {
   required int64 version = 1;
   required string error = 2;
 }
 
+// response which says request should be made to another host
 message PBProtoForward {
 	required int64 version = 1;
 	required PBProtoVnode vnode = 2;
 }
 
+// request to join the cluster
 message PBProtoJoin {
   required string clusterName = 1;
   required PBProtoVnode vnode = 2;
 }
 
+// request to leave the cluster
 message PBProtoLeave {
 	required PBProtoVnode vnode = 1;
+}
+
+// request the list of vnodes from a node
+message PBProtoListVnodes {
+	// no params are required
+}
+
+// response with list of vnodes
+message PBProtoListVnodesResp {
+	repeated PBProtoVnode vnodes = 1;
 }

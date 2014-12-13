@@ -42,5 +42,5 @@ func (vn *localVnode) schedule() {
 }
 
 func (vn *localVnode) stabilize() {
-	defer vn.stabilize()
+	defer vn.schedule()
 }

@@ -81,42 +81,46 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		zmq_context:       context,
 	}
 	// proxy messages between router and dealer
-	go func() {
-		for {
-			sockets, _ := poller.Poll(-1)
-			for _, socket := range sockets {
-				switch s := socket.Socket; s {
-				case router_sock:
-					msg, err := s.RecvBytes(0)
-					if err != nil {
-						log.Println("ERR: TransportListener read bytes on router failed", err)
-						continue
+	/*
+		go func() {
+			for {
+				sockets, _ := poller.Poll(-1)
+				for _, socket := range sockets {
+					switch s := socket.Socket; s {
+					case router_sock:
+						msg, err := s.RecvBytes(0)
+						if err != nil {
+							log.Println("ERR: TransportListener read bytes on router failed", err)
+							continue
+						}
+						log.Println("router got msg")
+						// forward to dealer
+						_, err = dealer_sock.SendBytes(msg, 0)
+						if err != nil {
+							log.Println("ERR: TransportListener forward to dealer failed", err)
+							continue
+						}
+						log.Println("router forwarded to dealer")
+						transport.activeRequests += 1
+					case dealer_sock:
+						msg, err := s.RecvBytes(0)
+						if err != nil {
+							log.Println("ERR: TransportListener read bytes on dealer failed", err)
+							continue
+						}
+						// forward up to router
+						_, err = router_sock.SendBytes(msg, 0)
+						if err != nil {
+							log.Println("ERR: TransportListener forward to router failed", err)
+							continue
+						}
+						transport.activeRequests -= 1
 					}
-					// forward to dealer
-					_, err = dealer_sock.SendBytes(msg, 0)
-					if err != nil {
-						log.Println("ERR: TransportListener forward to dealer failed", err)
-						continue
-					}
-					transport.activeRequests += 1
-				case dealer_sock:
-					msg, err := s.RecvBytes(0)
-					if err != nil {
-						log.Println("ERR: TransportListener read bytes on dealer failed", err)
-						continue
-					}
-					// forward up to router
-					_, err = router_sock.SendBytes(msg, 0)
-					if err != nil {
-						log.Println("ERR: TransportListener forward to router failed", err)
-						continue
-					}
-					transport.activeRequests -= 1
 				}
 			}
-		}
-	}()
-
+		}()
+	*/
+	go zmq.Proxy(router_sock, dealer_sock, nil)
 	// Scheduler goroutine keeps track of running workers
 	// It spawns new ones if needed, and cancels ones that are idling
 	go func() {
@@ -124,7 +128,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		workers := make(map[*workerComm]bool)
 		// fire up initial set of workers
 		for i := 0; i < transport.minHandlers; i++ {
-			go zmq_worker(transport)
+			go transport.zmq_worker()
 		}
 		for {
 			select {
@@ -161,7 +165,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 				// check if requests are piling up and start more workers if that's the case
 				if transport.activeRequests > 3*len(workers) {
 					for i := 0; i < transport.incrHandlers; i++ {
-						go zmq_worker(transport)
+						go transport.zmq_worker()
 					}
 				}
 			}
@@ -176,7 +180,7 @@ type workerComm struct {
 	worker_ctl chan controlType // worker's control channel for communication with scheduler
 }
 
-func zmq_worker(transport *ZMQTransport) {
+func (transport *ZMQTransport) zmq_worker() {
 	// setup REP socket
 	rep_sock, err := transport.zmq_context.NewSocket(zmq.REP)
 	if err != nil {
@@ -207,7 +211,8 @@ func zmq_worker(transport *ZMQTransport) {
 	}
 
 	// setup socket read channel
-	rpc_c := make(chan []byte)
+	rpc_req_c := make(chan *ChordMsg)
+	rpc_response_c := make(chan *ChordMsg)
 	poller := zmq.NewPoller()
 	poller.Add(rep_sock, zmq.POLLIN)
 	cancel_c := make(chan bool, 1)
@@ -218,15 +223,24 @@ func zmq_worker(transport *ZMQTransport) {
 			// poll for 5 seconds, but then see if we should be canceled
 			sockets, _ := poller.Poll(5 * time.Second)
 			for _, socket := range sockets {
-				msg, err := socket.Socket.RecvBytes(0)
+				rawmsg, err := socket.Socket.RecvBytes(0)
 				if err != nil {
 					log.Println("ERR: TransportListener error while reading from REP, ", err)
 					continue
 				}
-				// emit data
-				rpc_c <- msg
-				response := <-rpc_c
-				socket.Socket.SendBytes(response, 0)
+				// decode and emit data
+				decoded, err := transport.Decode(rawmsg)
+				if err != nil {
+					errorMsg := transport.newErrorMsg("Failed to decode request")
+					encoded := transport.Encode(errorMsg.Type, errorMsg.Data)
+					socket.Socket.SendBytes(encoded, 0)
+					continue
+				}
+				rpc_req_c <- decoded
+				// wait for response
+				response := <-rpc_response_c
+				encoded := transport.Encode(response.Type, response.Data)
+				socket.Socket.SendBytes(encoded, 0)
 			}
 			// check for cancel request
 			select {
@@ -244,10 +258,16 @@ func zmq_worker(transport *ZMQTransport) {
 	ticker := time.NewTicker(transport.workerIdleTimeout)
 	for {
 		select {
-		case request := <-rpc_c:
-			// handle data
-			log.Println("Got data", request)
-
+		case request := <-rpc_req_c:
+			// handle request
+			switch request.Type {
+			case pbPing:
+				rpc_handle_ping(request, rpc_response_c)
+			default:
+				responseErr := transport.newErrorMsg("Unknown message type")
+				rpc_response_c <- responseErr
+			}
+			// restart idle timer
 			ticker.Stop()
 			ticker = time.NewTicker(transport.workerIdleTimeout)
 

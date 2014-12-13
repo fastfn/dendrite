@@ -6,12 +6,17 @@ import (
 	"time"
 )
 
+type MsgType byte
+type ChordMsg struct {
+	Type MsgType
+	Data []byte
+}
 type Transport interface {
 	// Gets a list of the vnodes on the box
-	//ListVnodes(string) ([]*Vnode, error)
+	ListVnodes(string) ([]*Vnode, error)
 
 	// Ping a Vnode, check for liveness
-	//Ping(*Vnode) (bool, error)
+	Ping(*Vnode) (bool, error)
 
 	// Request a nodes predecessor
 	//GetPredecessor(*Vnode) (*Vnode, error)
@@ -30,6 +35,12 @@ type Transport interface {
 
 	// Register listener
 	//Register(*Vnode, VnodeRPC)
+
+	// encode encodes dendrite msg into two frame byte stream
+	// first byte is message type, and the rest is protobuf data
+	Encode(MsgType, []byte) []byte
+	// decode reverses the above process
+	Decode([]byte) (*ChordMsg, error)
 }
 
 type Config struct {
@@ -106,5 +117,20 @@ func CreateRing(config *Config, transport Transport) (*Ring, error) {
 }
 
 func JoinRing(config *Config, transport Transport, existing string) (*Ring, error) {
-	return &Ring{}, nil
+	r := &Ring{
+		config:    config,
+		transport: transport,
+		vnodes:    make([]*localVnode, config.NumVnodes),
+		shutdown:  make(chan bool),
+	}
+	// initialize vnodes
+	for i := 0; i < config.NumVnodes; i++ {
+		vn := &localVnode{}
+		r.vnodes[i] = vn
+		vn.ring = r
+		vn.init(i)
+	}
+	sort.Sort(r)
+	r.transport.Ping(&Vnode{Host: existing})
+	return r, nil
 }
