@@ -35,12 +35,14 @@ message PBProtoForward {
 // request to join the cluster
 message PBProtoJoin {
   required string clusterName = 1;
-  required PBProtoVnode vnode = 2;
+  required PBProtoVnode source = 2;
+  required PBProtoVnode target = 3;
 }
 
 // request to leave the cluster
 message PBProtoLeave {
-	required PBProtoVnode vnode = 1;
+	required PBProtoVnode source = 1;
+	required PBProtoVnode target = 2;
 }
 
 // request the list of vnodes from a node

@@ -228,7 +228,7 @@ func (transport *ZMQTransport) zmq_worker() {
 					log.Println("ERR: TransportListener error while reading from REP, ", err)
 					continue
 				}
-				// decode and emit data
+				// decode raw data
 				decoded, err := transport.Decode(rawmsg)
 				if err != nil {
 					errorMsg := transport.newErrorMsg("Failed to decode request")
@@ -260,13 +260,7 @@ func (transport *ZMQTransport) zmq_worker() {
 		select {
 		case request := <-rpc_req_c:
 			// handle request
-			switch request.Type {
-			case pbPing:
-				rpc_handle_ping(request, rpc_response_c)
-			default:
-				responseErr := transport.newErrorMsg("Unknown message type")
-				rpc_response_c <- responseErr
-			}
+			request.TransportHandler(request, rpc_response_c)
 			// restart idle timer
 			ticker.Stop()
 			ticker = time.NewTicker(transport.workerIdleTimeout)

@@ -45,11 +45,50 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 	if len(data) < 2 {
 		return nil, fmt.Errorf("data too short")
 	}
-	msg := &ChordMsg{
+	cm := &ChordMsg{
 		Type: MsgType(data[0]),
 		Data: data[1:],
 	}
-	return msg, nil
+
+	// parse the data and set the handler
+	switch cm.Type {
+	case pbPing:
+		var pingMsg PBProtoPing
+		err := proto.Unmarshal(cm.Data, &pingMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoPing message - %s", err)
+		}
+		cm.TransportMsg = pingMsg
+		cm.TransportHandler = transport.zmq_ping_handler
+	case pbJoin:
+		var joinMsg PBProtoJoin
+		err := proto.Unmarshal(cm.Data, &joinMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoJoin message - %s", err)
+		}
+		cm.TransportMsg = joinMsg
+		cm.TransportHandler = transport.zmq_join_handler
+	case pbLeave:
+		var leaveMsg PBProtoLeave
+		err := proto.Unmarshal(cm.Data, &leaveMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoLeave message - %s", err)
+		}
+		cm.TransportMsg = leaveMsg
+		cm.TransportHandler = transport.zmq_leave_handler
+	case pbListVnodes:
+		var listVnodesMsg PBProtoListVnodes
+		err := proto.Unmarshal(cm.Data, &listVnodesMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoListVnodes message - %s", err)
+		}
+		cm.TransportMsg = listVnodesMsg
+		cm.TransportHandler = transport.zmq_listVnodes_handler
+	default:
+		return nil, fmt.Errorf("error decoding message - unknown request type")
+	}
+
+	return cm, nil
 }
 
 func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {

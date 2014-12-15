@@ -8,9 +8,12 @@ import (
 
 type MsgType byte
 type ChordMsg struct {
-	Type MsgType
-	Data []byte
+	Type             MsgType
+	Data             []byte
+	TransportMsg     interface{} // unmarshalled data, depending on transport
+	TransportHandler func(*ChordMsg, chan *ChordMsg)
 }
+
 type Transport interface {
 	// Gets a list of the vnodes on the box
 	ListVnodes(string) ([]*Vnode, error)
