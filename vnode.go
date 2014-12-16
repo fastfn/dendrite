@@ -12,6 +12,10 @@ type Vnode struct {
 	Host string // ip:port
 }
 
+func (vn *Vnode) selfVnode() *Vnode {
+	return vn
+}
+
 // local Vnode
 type localVnode struct {
 	Vnode
@@ -43,4 +47,29 @@ func (vn *localVnode) schedule() {
 
 func (vn *localVnode) stabilize() {
 	defer vn.schedule()
+}
+
+// returns successor for requested id
+// second return argument indicates whether client should forward request to another node
+func (vn *localVnode) find_successor(id []byte) (*Vnode, bool) {
+	// check if Id falls between me and my successor
+	if between(vn.Id, vn.successors[0].Id, id, true) {
+		return vn.successors[0], true
+	}
+	return vn.closest_preceeding_finger(id), false
+}
+
+// Find closest preceeding finger node
+func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
+	// keysize(i) down to 1
+	for i := len(vn.finger) - 1; i >= 0; i-- {
+		if vn.finger[i] == nil {
+			continue
+		}
+		// check if id falls after this finger (finger[i] IN (n, id))
+		if between(vn.Id, id, vn.finger[i].Id, false) {
+			return vn.finger[i]
+		}
+	}
+	return vn.selfVnode()
 }
