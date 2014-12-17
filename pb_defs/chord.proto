@@ -22,7 +22,6 @@ message PBProtoAck {
 
 // error response
 message PBProtoErr {
-  required int64 version = 1;
   required string error = 2;
 }
 
@@ -47,7 +46,7 @@ message PBProtoLeave {
 
 // request the list of vnodes from a node
 message PBProtoListVnodes {
-	// no params are required
+	// no params are needed
 }
 
 // response with list of vnodes

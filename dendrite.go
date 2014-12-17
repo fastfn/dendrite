@@ -2,6 +2,8 @@ package dendrite
 
 import (
 	"bytes"
+	"fmt"
+	"log"
 	"sort"
 	"time"
 )
@@ -20,7 +22,7 @@ type Transport interface {
 
 	// Ping a Vnode, check for liveness
 	Ping(*Vnode) (bool, error)
-
+	SetRing(*Ring)
 	// Request a nodes predecessor
 	//GetPredecessor(*Vnode) (*Vnode, error)
 
@@ -94,6 +96,8 @@ func CreateRing(config *Config, transport Transport) (*Ring, error) {
 		vnodes:    make([]*localVnode, config.NumVnodes),
 		shutdown:  make(chan bool),
 	}
+	transport.SetRing(r)
+
 	// initialize vnodes
 	for i := 0; i < config.NumVnodes; i++ {
 		vn := &localVnode{}
@@ -120,6 +124,17 @@ func CreateRing(config *Config, transport Transport) (*Ring, error) {
 }
 
 func JoinRing(config *Config, transport Transport, existing string) (*Ring, error) {
+	hosts, err := transport.ListVnodes(existing)
+	if err != nil {
+		return nil, err
+	}
+	if hosts == nil || len(hosts) == 0 {
+		return nil, fmt.Errorf("Remote host has no vnodes registered yet")
+	}
+
+	for _, h := range hosts {
+		log.Println("Host: %s \t%x", h.Host, h.Id)
+	}
 	r := &Ring{
 		config:    config,
 		transport: transport,

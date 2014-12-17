@@ -98,7 +98,6 @@ func (m *PBProtoAck) GetOk() bool {
 
 // error response
 type PBProtoErr struct {
-	Version          *int64  `protobuf:"varint,1,req,name=version" json:"version,omitempty"`
 	Error            *string `protobuf:"bytes,2,req,name=error" json:"error,omitempty"`
 	XXX_unrecognized []byte  `json:"-"`
 }
@@ -106,13 +105,6 @@ type PBProtoErr struct {
 func (m *PBProtoErr) Reset()         { *m = PBProtoErr{} }
 func (m *PBProtoErr) String() string { return proto.CompactTextString(m) }
 func (*PBProtoErr) ProtoMessage()    {}
-
-func (m *PBProtoErr) GetVersion() int64 {
-	if m != nil && m.Version != nil {
-		return *m.Version
-	}
-	return 0
-}
 
 func (m *PBProtoErr) GetError() string {
 	if m != nil && m.Error != nil {
@@ -149,7 +141,8 @@ func (m *PBProtoForward) GetVnode() *PBProtoVnode {
 // request to join the cluster
 type PBProtoJoin struct {
 	ClusterName      *string       `protobuf:"bytes,1,req,name=clusterName" json:"clusterName,omitempty"`
-	Vnode            *PBProtoVnode `protobuf:"bytes,2,req,name=vnode" json:"vnode,omitempty"`
+	Source           *PBProtoVnode `protobuf:"bytes,2,req,name=source" json:"source,omitempty"`
+	Target           *PBProtoVnode `protobuf:"bytes,3,req,name=target" json:"target,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }
 
@@ -164,16 +157,24 @@ func (m *PBProtoJoin) GetClusterName() string {
 	return ""
 }
 
-func (m *PBProtoJoin) GetVnode() *PBProtoVnode {
+func (m *PBProtoJoin) GetSource() *PBProtoVnode {
 	if m != nil {
-		return m.Vnode
+		return m.Source
+	}
+	return nil
+}
+
+func (m *PBProtoJoin) GetTarget() *PBProtoVnode {
+	if m != nil {
+		return m.Target
 	}
 	return nil
 }
 
 // request to leave the cluster
 type PBProtoLeave struct {
-	Vnode            *PBProtoVnode `protobuf:"bytes,1,req,name=vnode" json:"vnode,omitempty"`
+	Source           *PBProtoVnode `protobuf:"bytes,1,req,name=source" json:"source,omitempty"`
+	Target           *PBProtoVnode `protobuf:"bytes,2,req,name=target" json:"target,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }
 
@@ -181,9 +182,16 @@ func (m *PBProtoLeave) Reset()         { *m = PBProtoLeave{} }
 func (m *PBProtoLeave) String() string { return proto.CompactTextString(m) }
 func (*PBProtoLeave) ProtoMessage()    {}
 
-func (m *PBProtoLeave) GetVnode() *PBProtoVnode {
+func (m *PBProtoLeave) GetSource() *PBProtoVnode {
 	if m != nil {
-		return m.Vnode
+		return m.Source
+	}
+	return nil
+}
+
+func (m *PBProtoLeave) GetTarget() *PBProtoVnode {
+	if m != nil {
+		return m.Target
 	}
 	return nil
 }

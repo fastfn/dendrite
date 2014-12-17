@@ -27,11 +27,17 @@ type ZMQTransport struct {
 	maxHandlers       int
 	incrHandlers      int
 	activeRequests    int
+	ring              *Ring
+	clientTimeout     time.Duration
 	control_c         chan *workerComm
 	dealer_sock       *zmq.Socket
 	router_sock       *zmq.Socket
 	zmq_context       *zmq.Context
 	workerIdleTimeout time.Duration
+}
+
+func (t *ZMQTransport) SetRing(r *Ring) {
+	t.ring = r
 }
 
 // Creates ZeroMQ transport
@@ -70,6 +76,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 
 	transport := &ZMQTransport{
 		lock:              new(sync.Mutex),
+		clientTimeout:     timeout,
 		minHandlers:       10,
 		maxHandlers:       1024,
 		incrHandlers:      10,
@@ -231,7 +238,7 @@ func (transport *ZMQTransport) zmq_worker() {
 				// decode raw data
 				decoded, err := transport.Decode(rawmsg)
 				if err != nil {
-					errorMsg := transport.newErrorMsg("Failed to decode request")
+					errorMsg := transport.newErrorMsg("Failed to decode request - " + err.Error())
 					encoded := transport.Encode(errorMsg.Type, errorMsg.Data)
 					socket.Socket.SendBytes(encoded, 0)
 					continue
