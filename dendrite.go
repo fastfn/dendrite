@@ -89,15 +89,26 @@ func (r *Ring) Len() int {
 	return len(r.vnodes)
 }
 
-func CreateRing(config *Config, transport Transport) (*Ring, error) {
-	r := &Ring{
-		config:    config,
-		transport: transport,
-		vnodes:    make([]*localVnode, config.NumVnodes),
-		shutdown:  make(chan bool),
+// Initializes the vnodes with their local successors
+// Vnodes need to be sorted before this method is called
+func (r *Ring) setLocalSuccessors() {
+	numV := len(r.vnodes)
+	// we use numV-1 in order to avoid setting ourselves as last successor
+	numSuc := min(r.config.NumSuccessors, numV-1)
+	for idx, vnode := range r.vnodes {
+		for i := 0; i < numSuc; i++ {
+			vnode.successors[i] = &r.vnodes[(idx+i+1)%numV].Vnode
+		}
 	}
-	transport.SetRing(r)
 
+}
+
+func (r *Ring) init(config *Config, transport Transport) {
+	r.config = config
+	r.transport = transport
+	r.vnodes = make([]*localVnode, config.NumVnodes)
+	r.shutdown = make(chan bool)
+	transport.SetRing(r)
 	// initialize vnodes
 	for i := 0; i < config.NumVnodes; i++ {
 		vn := &localVnode{}
@@ -106,20 +117,24 @@ func CreateRing(config *Config, transport Transport) (*Ring, error) {
 		vn.init(i)
 	}
 	sort.Sort(r)
+}
 
-	// for each vnode, setup successors
-	numV := len(r.vnodes)
-	numSuc := min(r.config.NumSuccessors, numV-1)
-	for idx, vnode := range r.vnodes {
-		for i := 0; i < numSuc; i++ {
-			vnode.successors[i] = &r.vnodes[(idx+i+1)%numV].Vnode
-		}
-	}
-
-	// schedule vnode stabilizers
+func (r *Ring) schedule() {
 	for i := 0; i < len(r.vnodes); i++ {
 		r.vnodes[i].schedule()
 	}
+}
+func CreateRing(config *Config, transport Transport) (*Ring, error) {
+	// initialize the ring and sort vnodes
+	r := &Ring{}
+	r.init()
+
+	// for each vnode, setup local successors
+	r.setLocalSuccessors()
+
+	// schedule vnode stabilizers
+	r.schedule()
+
 	return r, nil
 }
 
@@ -135,20 +150,11 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 	for _, h := range hosts {
 		log.Println("Host: %s \t%x", h.Host, h.Id)
 	}
-	r := &Ring{
-		config:    config,
-		transport: transport,
-		vnodes:    make([]*localVnode, config.NumVnodes),
-		shutdown:  make(chan bool),
-	}
-	// initialize vnodes
-	for i := 0; i < config.NumVnodes; i++ {
-		vn := &localVnode{}
-		r.vnodes[i] = vn
-		vn.ring = r
-		vn.init(i)
-	}
-	sort.Sort(r)
+
+	// initialize the ring and sort vnodes
+	r := &Ring{}
+	r.init()
+
 	r.transport.Ping(&Vnode{Host: existing})
 	return r, nil
 }
