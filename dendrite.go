@@ -29,8 +29,8 @@ type Transport interface {
 	// Notify our successor of ourselves
 	//Notify(target, self *Vnode) ([]*Vnode, error)
 
-	// Find a successor
-	//FindSuccessors(*Vnode, int, []byte) ([]*Vnode, error)
+	// Find a successors for vnode key
+	FindSuccessors(*Vnode, int, []byte) ([]*Vnode, error)
 
 	// Clears a predecessor if it matches a given vnode. Used to leave.
 	//ClearPredecessor(target, self *Vnode) error
@@ -127,7 +127,7 @@ func (r *Ring) schedule() {
 func CreateRing(config *Config, transport Transport) (*Ring, error) {
 	// initialize the ring and sort vnodes
 	r := &Ring{}
-	r.init()
+	r.init(config, transport)
 
 	// for each vnode, setup local successors
 	r.setLocalSuccessors()
@@ -153,8 +153,31 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 
 	// initialize the ring and sort vnodes
 	r := &Ring{}
-	r.init()
+	r.init(config, transport)
 
+	// for each vnode, get the new list of live successors from remote
+	for _, vn := range r.vnodes {
+		resolved := false
+		var last_error error
+		// go through each host until we get successor list from one of them
+		for _, remote_host := range hosts {
+			succs, err := transport.FindSuccessors(remote_host, config.NumSuccessors, vn.Id)
+			if err != nil {
+				last_error = err
+				continue
+			}
+			if succs == nil || len(succs) == 0 {
+				return nil, fmt.Errorf("Failed to find successors for vnode, got empty list")
+			}
+			for idx, s := range succs {
+				vn.successors[idx] = s
+			}
+		}
+		if !resolved {
+			return nil, fmt.Errorf("Exhausted all remote vnodes while trying to get the list of successors. Last error: %s", last_error.Error())
+		}
+
+	}
 	r.transport.Ping(&Vnode{Host: existing})
 	return r, nil
 }

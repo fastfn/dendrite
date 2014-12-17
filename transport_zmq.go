@@ -20,6 +20,7 @@ const (
 	pbLeave
 	pbListVnodes
 	pbListVnodesResp
+	pbFindSuccessors
 )
 
 func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
@@ -70,14 +71,13 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = errorMsg
 		cm.TransportHandler = transport.zmq_error_handler
-	case pbJoin:
-		var joinMsg PBProtoJoin
-		err := proto.Unmarshal(cm.Data, &joinMsg)
+	case pbForward:
+		var forwardMsg PBProtoForward
+		err := proto.Unmarshal(cm.Data, &forwardMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBProtoJoin message - %s", err)
+			return nil, fmt.Errorf("error decoding PBProtoForward message - %s", err)
 		}
-		cm.TransportMsg = joinMsg
-		cm.TransportHandler = transport.zmq_join_handler
+		cm.TransportMsg = forwardMsg
 	case pbLeave:
 		var leaveMsg PBProtoLeave
 		err := proto.Unmarshal(cm.Data, &leaveMsg)
@@ -101,6 +101,14 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 			return nil, fmt.Errorf("error decoding PBProtoListVnodesResp message - %s", err)
 		}
 		cm.TransportMsg = listVnodesRespMsg
+	case pbFindSuccessors:
+		var findSuccMsg PBProtoFindSuccessors
+		err := proto.Unmarshal(cm.Data, &findSuccMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoFindSuccessors message - %s", err)
+		}
+		cm.TransportMsg = findSuccMsg
+		cm.TransportHandler = transport.zmq_find_successors_handler
 	default:
 		return nil, fmt.Errorf("error decoding message - unknown request type %x", cm.Type)
 	}
@@ -131,19 +139,19 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
 		if err != nil {
-			error_c <- fmt.Errorf("Error while reading response - %s", err)
+			error_c <- fmt.Errorf("transport::ListVnodes - error while reading response - %s", err)
 			return
 		}
 		decoded, err := transport.Decode(resp)
 		if err != nil {
-			error_c <- fmt.Errorf("error while decoding response for listVnodes - %s", err)
+			error_c <- fmt.Errorf("transport::ListVnodes - error while decoding response - %s", err)
 			return
 		}
 
 		switch decoded.Type {
 		case pbErr:
 			pbMsg := decoded.TransportMsg.(PBProtoErr)
-			error_c <- fmt.Errorf("got error response - %s", pbMsg.GetError())
+			error_c <- fmt.Errorf("transport::ListVnodes - got error response - %s", pbMsg.GetError())
 		case pbListVnodesResp:
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
@@ -154,13 +162,14 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 			return
 		default:
 			// unexpected response
-			error_c <- fmt.Errorf("unexpected response for listVnodes")
+			error_c <- fmt.Errorf("transport::ListVnodes - unexpected response")
 			return
 		}
 	}()
+
 	select {
 	case <-time.After(transport.clientTimeout):
-		return nil, fmt.Errorf("Command timed out!")
+		return nil, fmt.Errorf("transport::ListVnodes - command timed out!")
 	case err := <-error_c:
 		return nil, err
 	case resp_vnodes := <-resp_c:
@@ -169,6 +178,82 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 
 }
 
+// Client Request: find successors for vnode key, by asking remote vnode
+func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []byte) ([]*Vnode, error) {
+	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+	if err != nil {
+		return nil, err
+	}
+	err = req_sock.Connect("tcp://" + remote.Host)
+	if err != nil {
+		return nil, err
+	}
+	error_c := make(chan error, 1)
+	resp_c := make(chan []*Vnode, 1)
+	forward_c := make(chan *Vnode, 1)
+
+	go func() {
+		// Build request protobuf
+		req := &PBProtoFindSuccessors{
+			Key:   key,
+			Limit: proto.Int32(int32(limit)),
+		}
+		reqData, _ := proto.Marshal(req)
+		encoded := transport.Encode(pbFindSuccessors, reqData)
+		req_sock.SendBytes(encoded, 0)
+
+		// read response and decode it
+		resp, err := req_sock.RecvBytes(0)
+		if err != nil {
+			error_c <- fmt.Errorf("transport::FindSuccessors - error while reading response - %s", err)
+			return
+		}
+		decoded, err := transport.Decode(resp)
+		if err != nil {
+			error_c <- fmt.Errorf("transport::FindSuccessors - error while decoding response - %s", err)
+			return
+		}
+
+		switch decoded.Type {
+		case pbErr:
+			pbMsg := decoded.TransportMsg.(PBProtoErr)
+			error_c <- fmt.Errorf("transport::FindSuccessors - got error response - %s", pbMsg.GetError())
+			return
+		case pbForward:
+			pbMsg := decoded.TransportMsg.(PBProtoForward)
+			vnode := &Vnode{
+				Id:   pbMsg.GetVnode().GetId(),
+				Host: pbMsg.GetVnode().GetHost(),
+			}
+			forward_c <- vnode
+			return
+		case pbListVnodesResp:
+			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
+			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
+			for idx, pbVnode := range pbMsg.GetVnodes() {
+				vnodes[idx] = &Vnode{Id: pbVnode.GetId(), Host: pbVnode.GetHost()}
+			}
+			resp_c <- vnodes
+			return
+		default:
+			// unexpected response
+			error_c <- fmt.Errorf("transport::FindSuccessors - unexpected response")
+			return
+		}
+	}()
+
+	select {
+	case <-time.After(transport.clientTimeout):
+		return nil, fmt.Errorf("transport::FindSuccessors - command timed out!")
+	case err := <-error_c:
+		return nil, err
+	case new_remote := <-forward_c:
+		return transport.FindSuccessors(new_remote, limit, key)
+	case resp_vnodes := <-resp_c:
+		return resp_vnodes, nil
+	}
+
+}
 func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
 	if err != nil {

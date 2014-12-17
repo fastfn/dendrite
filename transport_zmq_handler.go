@@ -37,7 +37,8 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 	return
 }
 
-func (transport *ZMQTransport) zmq_join_handler(request *ChordMsg, w chan *ChordMsg) {
+func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w chan *ChordMsg) {
+	// todo
 
 }
 func (transport *ZMQTransport) zmq_leave_handler(request *ChordMsg, w chan *ChordMsg) {

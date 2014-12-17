@@ -14,10 +14,10 @@ It has these top-level messages:
 	PBProtoAck
 	PBProtoErr
 	PBProtoForward
-	PBProtoJoin
 	PBProtoLeave
 	PBProtoListVnodes
 	PBProtoListVnodesResp
+	PBProtoFindSuccessors
 */
 package dendrite
 
@@ -115,7 +115,6 @@ func (m *PBProtoErr) GetError() string {
 
 // response which says request should be made to another host
 type PBProtoForward struct {
-	Version          *int64        `protobuf:"varint,1,req,name=version" json:"version,omitempty"`
 	Vnode            *PBProtoVnode `protobuf:"bytes,2,req,name=vnode" json:"vnode,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }
@@ -124,49 +123,9 @@ func (m *PBProtoForward) Reset()         { *m = PBProtoForward{} }
 func (m *PBProtoForward) String() string { return proto.CompactTextString(m) }
 func (*PBProtoForward) ProtoMessage()    {}
 
-func (m *PBProtoForward) GetVersion() int64 {
-	if m != nil && m.Version != nil {
-		return *m.Version
-	}
-	return 0
-}
-
 func (m *PBProtoForward) GetVnode() *PBProtoVnode {
 	if m != nil {
 		return m.Vnode
-	}
-	return nil
-}
-
-// request to join the cluster
-type PBProtoJoin struct {
-	ClusterName      *string       `protobuf:"bytes,1,req,name=clusterName" json:"clusterName,omitempty"`
-	Source           *PBProtoVnode `protobuf:"bytes,2,req,name=source" json:"source,omitempty"`
-	Target           *PBProtoVnode `protobuf:"bytes,3,req,name=target" json:"target,omitempty"`
-	XXX_unrecognized []byte        `json:"-"`
-}
-
-func (m *PBProtoJoin) Reset()         { *m = PBProtoJoin{} }
-func (m *PBProtoJoin) String() string { return proto.CompactTextString(m) }
-func (*PBProtoJoin) ProtoMessage()    {}
-
-func (m *PBProtoJoin) GetClusterName() string {
-	if m != nil && m.ClusterName != nil {
-		return *m.ClusterName
-	}
-	return ""
-}
-
-func (m *PBProtoJoin) GetSource() *PBProtoVnode {
-	if m != nil {
-		return m.Source
-	}
-	return nil
-}
-
-func (m *PBProtoJoin) GetTarget() *PBProtoVnode {
-	if m != nil {
-		return m.Target
 	}
 	return nil
 }
@@ -205,7 +164,7 @@ func (m *PBProtoListVnodes) Reset()         { *m = PBProtoListVnodes{} }
 func (m *PBProtoListVnodes) String() string { return proto.CompactTextString(m) }
 func (*PBProtoListVnodes) ProtoMessage()    {}
 
-// response with list of vnodes
+// response with list of vnodes, used also as FindSuccessors response
 type PBProtoListVnodesResp struct {
 	Vnodes           []*PBProtoVnode `protobuf:"bytes,1,rep,name=vnodes" json:"vnodes,omitempty"`
 	XXX_unrecognized []byte          `json:"-"`
@@ -220,6 +179,31 @@ func (m *PBProtoListVnodesResp) GetVnodes() []*PBProtoVnode {
 		return m.Vnodes
 	}
 	return nil
+}
+
+// request to find successors for vnode key
+type PBProtoFindSuccessors struct {
+	Key              []byte `protobuf:"bytes,1,req,name=key" json:"key,omitempty"`
+	Limit            *int32 `protobuf:"varint,2,opt,name=limit" json:"limit,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *PBProtoFindSuccessors) Reset()         { *m = PBProtoFindSuccessors{} }
+func (m *PBProtoFindSuccessors) String() string { return proto.CompactTextString(m) }
+func (*PBProtoFindSuccessors) ProtoMessage()    {}
+
+func (m *PBProtoFindSuccessors) GetKey() []byte {
+	if m != nil {
+		return m.Key
+	}
+	return nil
+}
+
+func (m *PBProtoFindSuccessors) GetLimit() int32 {
+	if m != nil && m.Limit != nil {
+		return *m.Limit
+	}
+	return 0
 }
 
 func init() {

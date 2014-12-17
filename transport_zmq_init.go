@@ -87,46 +87,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		router_sock:       router_sock,
 		zmq_context:       context,
 	}
-	// proxy messages between router and dealer
-	/*
-		go func() {
-			for {
-				sockets, _ := poller.Poll(-1)
-				for _, socket := range sockets {
-					switch s := socket.Socket; s {
-					case router_sock:
-						msg, err := s.RecvBytes(0)
-						if err != nil {
-							log.Println("ERR: TransportListener read bytes on router failed", err)
-							continue
-						}
-						log.Println("router got msg")
-						// forward to dealer
-						_, err = dealer_sock.SendBytes(msg, 0)
-						if err != nil {
-							log.Println("ERR: TransportListener forward to dealer failed", err)
-							continue
-						}
-						log.Println("router forwarded to dealer")
-						transport.activeRequests += 1
-					case dealer_sock:
-						msg, err := s.RecvBytes(0)
-						if err != nil {
-							log.Println("ERR: TransportListener read bytes on dealer failed", err)
-							continue
-						}
-						// forward up to router
-						_, err = router_sock.SendBytes(msg, 0)
-						if err != nil {
-							log.Println("ERR: TransportListener forward to router failed", err)
-							continue
-						}
-						transport.activeRequests -= 1
-					}
-				}
-			}
-		}()
-	*/
+
 	go zmq.Proxy(router_sock, dealer_sock, nil)
 	// Scheduler goroutine keeps track of running workers
 	// It spawns new ones if needed, and cancels ones that are idling
@@ -239,6 +200,13 @@ func (transport *ZMQTransport) zmq_worker() {
 				decoded, err := transport.Decode(rawmsg)
 				if err != nil {
 					errorMsg := transport.newErrorMsg("Failed to decode request - " + err.Error())
+					encoded := transport.Encode(errorMsg.Type, errorMsg.Data)
+					socket.Socket.SendBytes(encoded, 0)
+					continue
+				}
+				// if transportHandler is nil, this can not be a valid request
+				if decoded.TransportHandler == nil {
+					errorMsg := transport.newErrorMsg("Invalid request, unknown handler")
 					encoded := transport.Encode(errorMsg.Type, errorMsg.Data)
 					socket.Socket.SendBytes(encoded, 0)
 					continue

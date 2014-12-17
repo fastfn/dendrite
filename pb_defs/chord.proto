@@ -27,15 +27,7 @@ message PBProtoErr {
 
 // response which says request should be made to another host
 message PBProtoForward {
-	required int64 version = 1;
 	required PBProtoVnode vnode = 2;
-}
-
-// request to join the cluster
-message PBProtoJoin {
-  required string clusterName = 1;
-  required PBProtoVnode source = 2;
-  required PBProtoVnode target = 3;
 }
 
 // request to leave the cluster
@@ -49,7 +41,13 @@ message PBProtoListVnodes {
 	// no params are needed
 }
 
-// response with list of vnodes
+// response with list of vnodes, used also as FindSuccessors response
 message PBProtoListVnodesResp {
 	repeated PBProtoVnode vnodes = 1;
+}
+
+// request to find successors for vnode key
+message PBProtoFindSuccessors {
+	required bytes key = 1;
+	optional int32 limit = 2;
 }
