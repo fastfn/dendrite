@@ -3,7 +3,7 @@ package dendrite
 import (
 	"bytes"
 	"fmt"
-	"log"
+	//"log"
 	"sort"
 	"time"
 )
