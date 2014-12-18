@@ -2,6 +2,7 @@ package dendrite
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"log"
 )
@@ -38,6 +39,18 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 	return
 }
 
+func (transport *ZMQTransport) get_local_vnode(dest) (*Vnode, error) {
+	var local_vn *localVnode
+	for _, vn := range transport.ring.vnodes {
+		if bytes.Equal(vn.Id, dest.Id) {
+			local_vn = vn
+		}
+	}
+	if local_vn == nil {
+		return nil, fmt.Errorf("failed to find local destination vnode")
+	}
+	return local_vn, nil
+}
 func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w chan *ChordMsg) {
 	pbMsg := request.TransportMsg.(PBProtoFindSuccessors)
 	key := pbMsg.GetKey()
@@ -46,17 +59,13 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		Host: pbMsg.GetDest().GetHost(),
 	}
 	// make sure destination vnode exists locally
-	var local_vn *localVnode
-	for _, vn := range transport.ring.vnodes {
-		if bytes.Equal(vn.Id, dest.Id) {
-			local_vn = vn
-		}
-	}
-	if local_vn == nil {
-		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - failed to find local destination vnode")
+	local_vn, err := transport.get_local_vnode(dest)
+	if err == nil {
+		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - " + err.Error())
 		w <- errorMsg
 		return
 	}
+
 	// we're good. Now check if we have direct successor for requested key
 	if between(local_vn.Id, local_vn.successors[0].Id, key, true) {
 		pblist := new(PBProtoListVnodesResp)

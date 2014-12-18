@@ -122,6 +122,8 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer req_sock.Close()
+
 	err = req_sock.Connect("tcp://" + host)
 	if err != nil {
 		return nil, err
@@ -184,6 +186,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	if err != nil {
 		return nil, err
 	}
+	defer req_sock.Close()
 	err = req_sock.Connect("tcp://" + remote.Host)
 	if err != nil {
 		return nil, err
@@ -252,14 +255,10 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		return nil, fmt.Errorf("transport::FindSuccessors - command timed out!")
 
 	case err := <-error_c:
-		req_sock.Close()
 		return nil, err
 	case new_remote := <-forward_c:
-		req_sock.Close()
 		return transport.FindSuccessors(new_remote, limit, key)
 	case resp_vnodes := <-resp_c:
-		req_sock.Close()
-		log.Println("really got it")
 		return resp_vnodes, nil
 	}
 
@@ -269,6 +268,8 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer req_sock.Close()
+
 	err = req_sock.Connect("tcp://" + remote_vn.Host)
 	if err != nil {
 		return false, err

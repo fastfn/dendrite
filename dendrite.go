@@ -180,5 +180,10 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 
 	}
 	r.transport.Ping(&Vnode{Host: existing})
+
+	// We can now initiate stabilization protocol
+	for _, vn := range r.vnodes {
+		vn.stabilize()
+	}
 	return r, nil
 }
