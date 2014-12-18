@@ -133,7 +133,7 @@ func (m *PBProtoForward) GetVnode() *PBProtoVnode {
 // request to leave the cluster
 type PBProtoLeave struct {
 	Source           *PBProtoVnode `protobuf:"bytes,1,req,name=source" json:"source,omitempty"`
-	Target           *PBProtoVnode `protobuf:"bytes,2,req,name=target" json:"target,omitempty"`
+	Dest             *PBProtoVnode `protobuf:"bytes,2,req,name=dest" json:"dest,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }
 
@@ -148,9 +148,9 @@ func (m *PBProtoLeave) GetSource() *PBProtoVnode {
 	return nil
 }
 
-func (m *PBProtoLeave) GetTarget() *PBProtoVnode {
+func (m *PBProtoLeave) GetDest() *PBProtoVnode {
 	if m != nil {
-		return m.Target
+		return m.Dest
 	}
 	return nil
 }
@@ -183,9 +183,10 @@ func (m *PBProtoListVnodesResp) GetVnodes() []*PBProtoVnode {
 
 // request to find successors for vnode key
 type PBProtoFindSuccessors struct {
-	Key              []byte `protobuf:"bytes,1,req,name=key" json:"key,omitempty"`
-	Limit            *int32 `protobuf:"varint,2,opt,name=limit" json:"limit,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
+	Key              []byte        `protobuf:"bytes,1,req,name=key" json:"key,omitempty"`
+	Dest             *PBProtoVnode `protobuf:"bytes,2,req,name=dest" json:"dest,omitempty"`
+	Limit            *int32        `protobuf:"varint,3,opt,name=limit" json:"limit,omitempty"`
+	XXX_unrecognized []byte        `json:"-"`
 }
 
 func (m *PBProtoFindSuccessors) Reset()         { *m = PBProtoFindSuccessors{} }
@@ -195,6 +196,13 @@ func (*PBProtoFindSuccessors) ProtoMessage()    {}
 func (m *PBProtoFindSuccessors) GetKey() []byte {
 	if m != nil {
 		return m.Key
+	}
+	return nil
+}
+
+func (m *PBProtoFindSuccessors) GetDest() *PBProtoVnode {
+	if m != nil {
+		return m.Dest
 	}
 	return nil
 }

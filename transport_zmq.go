@@ -3,7 +3,7 @@ package dendrite
 import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	//"log"
+	"log"
 	//"sync"
 	"bytes"
 	"fmt"
@@ -194,7 +194,12 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 
 	go func() {
 		// Build request protobuf
+		dest := &PBProtoVnode{
+			Host: proto.String(remote.Host),
+			Id:   remote.Id,
+		}
 		req := &PBProtoFindSuccessors{
+			Dest:  dest,
 			Key:   key,
 			Limit: proto.Int32(int32(limit)),
 		}
@@ -245,11 +250,16 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	select {
 	case <-time.After(transport.clientTimeout):
 		return nil, fmt.Errorf("transport::FindSuccessors - command timed out!")
+
 	case err := <-error_c:
+		req_sock.Close()
 		return nil, err
 	case new_remote := <-forward_c:
+		req_sock.Close()
 		return transport.FindSuccessors(new_remote, limit, key)
 	case resp_vnodes := <-resp_c:
+		req_sock.Close()
+		log.Println("really got it")
 		return resp_vnodes, nil
 	}
 

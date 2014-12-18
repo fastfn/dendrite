@@ -27,13 +27,13 @@ message PBProtoErr {
 
 // response which says request should be made to another host
 message PBProtoForward {
-	required PBProtoVnode vnode = 2;
+	required PBProtoVnode vnode = 1;
 }
 
 // request to leave the cluster
 message PBProtoLeave {
 	required PBProtoVnode source = 1;
-	required PBProtoVnode target = 2;
+	required PBProtoVnode dest = 2;
 }
 
 // request the list of vnodes from a node
@@ -49,5 +49,6 @@ message PBProtoListVnodesResp {
 // request to find successors for vnode key
 message PBProtoFindSuccessors {
 	required bytes key = 1;
-	optional int32 limit = 2;
+	required PBProtoVnode dest = 2;
+	optional int32 limit = 3;
 }

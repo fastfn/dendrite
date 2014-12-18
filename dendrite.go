@@ -148,7 +148,7 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 	}
 
 	for _, h := range hosts {
-		log.Println("Host: %s \t%x", h.Host, h.Id)
+		log.Printf("Host: %s \t%X", h.Host, h.Id)
 	}
 
 	// initialize the ring and sort vnodes
@@ -172,6 +172,7 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 			for idx, s := range succs {
 				vn.successors[idx] = s
 			}
+			resolved = true
 		}
 		if !resolved {
 			return nil, fmt.Errorf("Exhausted all remote vnodes while trying to get the list of successors. Last error: %s", last_error.Error())
