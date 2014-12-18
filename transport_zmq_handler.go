@@ -1,8 +1,8 @@
 package dendrite
 
 import (
-	"bytes"
-	"fmt"
+	//"bytes"
+	//"fmt"
 	"github.com/golang/protobuf/proto"
 	"log"
 )
@@ -23,8 +23,13 @@ func (transport *ZMQTransport) zmq_ping_handler(request *ChordMsg, w chan *Chord
 
 func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan *ChordMsg) {
 	pblist := new(PBProtoListVnodesResp)
-	for _, vnode := range transport.ring.vnodes {
-		pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{Id: vnode.Id, Host: &vnode.Host})
+	for _, handler := range transport.table {
+		h, _ := transport.getVnodeHandler(handler.vn)
+		local_vn := h.(*localVnode)
+		for _, vnode := range local_vn.ring.vnodes {
+			pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{Id: vnode.Id, Host: &vnode.Host})
+		}
+		break
 	}
 	pbdata, err := proto.Marshal(pblist)
 	if err != nil {
@@ -39,18 +44,6 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 	return
 }
 
-func (transport *ZMQTransport) get_local_vnode(dest) (*Vnode, error) {
-	var local_vn *localVnode
-	for _, vn := range transport.ring.vnodes {
-		if bytes.Equal(vn.Id, dest.Id) {
-			local_vn = vn
-		}
-	}
-	if local_vn == nil {
-		return nil, fmt.Errorf("failed to find local destination vnode")
-	}
-	return local_vn, nil
-}
 func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w chan *ChordMsg) {
 	pbMsg := request.TransportMsg.(PBProtoFindSuccessors)
 	key := pbMsg.GetKey()
@@ -59,26 +52,30 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		Host: pbMsg.GetDest().GetHost(),
 	}
 	// make sure destination vnode exists locally
-	local_vn, err := transport.get_local_vnode(dest)
-	if err == nil {
+	local_vn, err := transport.getVnodeHandler(dest)
+	if err != nil {
 		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - " + err.Error())
 		w <- errorMsg
 		return
 	}
 
-	// we're good. Now check if we have direct successor for requested key
-	if between(local_vn.Id, local_vn.successors[0].Id, key, true) {
+	succs, forward_vn, err := local_vn.FindSuccessors(key, int(pbMsg.GetLimit()))
+	if err != nil {
+		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - " + err.Error())
+		w <- errorMsg
+		return
+	}
+
+	// if forward_vn is not set, return the list
+	if forward_vn == nil {
 		pblist := new(PBProtoListVnodesResp)
-		max_vnodes := min(int(pbMsg.GetLimit()), len(local_vn.successors))
-		for i := 0; i < max_vnodes; i++ {
-			if local_vn.successors[i] == nil {
-				continue
-			}
+		for _, s := range succs {
 			pblist.Vnodes = append(pblist.Vnodes,
 				&PBProtoVnode{
-					Id:   local_vn.successors[i].Id,
-					Host: proto.String(local_vn.successors[i].Host),
+					Id:   s.Id,
+					Host: proto.String(s.Host),
 				})
+
 		}
 		pbdata, err := proto.Marshal(pblist)
 		if err != nil {
@@ -92,14 +89,7 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		}
 		return
 	}
-	// if finger table has been initialized - forward request to closest finger
-	// otherwise forward to my successor
-	var forward_vn *Vnode
-	if local_vn.stabilized.IsZero() {
-		forward_vn = local_vn.successors[0]
-	} else {
-		forward_vn = local_vn.closest_preceeding_finger(key)
-	}
+	// send forward response
 	new_remote := &PBProtoVnode{
 		Id:   forward_vn.Id,
 		Host: proto.String(forward_vn.Host),

@@ -28,16 +28,13 @@ type ZMQTransport struct {
 	incrHandlers      int
 	activeRequests    int
 	ring              *Ring
+	table             map[string]*localHandler
 	clientTimeout     time.Duration
 	control_c         chan *workerComm
 	dealer_sock       *zmq.Socket
 	router_sock       *zmq.Socket
 	zmq_context       *zmq.Context
 	workerIdleTimeout time.Duration
-}
-
-func (t *ZMQTransport) SetRing(r *Ring) {
-	t.ring = r
 }
 
 // Creates ZeroMQ transport
@@ -82,6 +79,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		incrHandlers:      10,
 		activeRequests:    0,
 		workerIdleTimeout: 10 * time.Second,
+		table:             make(map[string]*localHandler),
 		control_c:         make(chan *workerComm),
 		dealer_sock:       dealer_sock,
 		router_sock:       router_sock,

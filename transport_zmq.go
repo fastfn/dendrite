@@ -116,6 +116,20 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 	return cm, nil
 }
 
+func (transport *ZMQTransport) getVnodeHandler(dest *Vnode) (VnodeHandler, error) {
+	h, ok := transport.table[dest.String()]
+	if ok {
+		return h.handler, nil
+	}
+	return nil, fmt.Errorf("local vnode handler not found")
+}
+
+func (transport *ZMQTransport) Register(vnode *Vnode, handler VnodeHandler) {
+	transport.lock.Lock()
+	transport.table[vnode.String()] = &localHandler{vn: vnode, handler: handler}
+	transport.lock.Unlock()
+}
+
 // Client Request: list of vnodes from remote host
 func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
@@ -290,6 +304,6 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Println("Got pong with version:", pongMsg.GetVersion())
+	log.Println("Got pong with version:", pongMsg.GetVersion())
 	return true, nil
 }

@@ -22,7 +22,6 @@ type Transport interface {
 
 	// Ping a Vnode, check for liveness
 	Ping(*Vnode) (bool, error)
-	SetRing(*Ring)
 	// Request a nodes predecessor
 	//GetPredecessor(*Vnode) (*Vnode, error)
 
@@ -38,8 +37,8 @@ type Transport interface {
 	// Instructs a node to skip a given successor. Used to leave.
 	//SkipSuccessor(target, self *Vnode) error
 
-	// Register listener
-	//Register(*Vnode, VnodeRPC)
+	// Register vnode handlers
+	Register(*Vnode, VnodeHandler)
 
 	// encode encodes dendrite msg into two frame byte stream
 	// first byte is message type, and the rest is protobuf data
@@ -105,10 +104,9 @@ func (r *Ring) setLocalSuccessors() {
 
 func (r *Ring) init(config *Config, transport Transport) {
 	r.config = config
-	r.transport = transport
+	r.transport = InitLocalTransport(transport)
 	r.vnodes = make([]*localVnode, config.NumVnodes)
 	r.shutdown = make(chan bool)
-	transport.SetRing(r)
 	// initialize vnodes
 	for i := 0; i < config.NumVnodes; i++ {
 		vn := &localVnode{}

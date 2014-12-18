@@ -3,6 +3,7 @@ package dendrite
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"time"
 )
 
@@ -12,8 +13,8 @@ type Vnode struct {
 	Host string // ip:port
 }
 
-func (vn *Vnode) selfVnode() *Vnode {
-	return vn
+func (vn *Vnode) String() string {
+	return fmt.Sprintf("%x", vn.Id)
 }
 
 // local Vnode
@@ -37,6 +38,7 @@ func (vn *localVnode) init(idx int) {
 	vn.Host = vn.ring.config.Hostname
 	vn.successors = make([]*Vnode, vn.ring.config.NumSuccessors)
 	vn.finger = make([]*Vnode, 160) // keyspace size is 160 with SHA1
+	vn.ring.transport.Register(&vn.Vnode, vn)
 }
 
 // Schedules the Vnode to do regular maintenence
@@ -47,6 +49,7 @@ func (vn *localVnode) schedule() {
 
 func (vn *localVnode) stabilize() {
 	defer vn.schedule()
+
 }
 
 // returns successor for requested id
@@ -71,5 +74,5 @@ func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 			return vn.finger[i]
 		}
 	}
-	return vn.selfVnode()
+	return &vn.Vnode
 }
