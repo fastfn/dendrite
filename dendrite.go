@@ -145,10 +145,6 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 		return nil, fmt.Errorf("Remote host has no vnodes registered yet")
 	}
 
-	for _, h := range hosts {
-		log.Printf("Host: %s \t%X", h.Host, h.Id)
-	}
-
 	// initialize the ring and sort vnodes
 	r := &Ring{}
 	r.init(config, transport)
