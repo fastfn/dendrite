@@ -8,7 +8,6 @@ import (
 // transports use this interface to avoid duplicate implementations
 type VnodeHandler interface {
 	FindSuccessors([]byte, int) ([]*Vnode, *Vnode, error) // args: key, limit # returns: succs, forward, error
-	ListVnodes()
 	GetPredecessor() (*Vnode, error)
 }
 
@@ -44,10 +43,6 @@ func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, e
 		forward_vn = vn.closest_preceeding_finger(key)
 	}
 	return nil, forward_vn, nil
-}
-
-func (vn *localVnode) ListVnodes() {
-
 }
 
 func (vn *localVnode) GetPredecessor() (*Vnode, error) {
