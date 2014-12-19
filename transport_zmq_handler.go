@@ -168,6 +168,9 @@ func (transport *ZMQTransport) zmq_notify_handler(request *ChordMsg, w chan *Cho
 	}
 	pblist := new(PBProtoListVnodesResp)
 	for _, succ := range succ_list {
+		if succ == nil {
+			break
+		}
 		pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{
 			Id:   succ.Id,
 			Host: proto.String(succ.Host),
