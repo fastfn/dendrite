@@ -23,6 +23,7 @@ const (
 	pbFindSuccessors
 	pbGetPredecessor
 	pbProtoVnode
+	pbNotify
 )
 
 func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
@@ -119,6 +120,14 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = getPredMsg
 		cm.TransportHandler = transport.zmq_get_predecessor_handler
+	case pbNotify:
+		var notifyMsg PBProtoNotify
+		err := proto.Unmarshal(cm.Data, &notifyMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoNotify message - %s", err)
+		}
+		cm.TransportMsg = notifyMsg
+		cm.TransportHandler = transport.zmq_notify_handler
 	default:
 		return nil, fmt.Errorf("error decoding message - unknown request type %x", cm.Type)
 	}
@@ -287,7 +296,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	}
 }
 
-// Client Request: find successors for vnode key, by asking remote vnode
+// Client Request: get vnode's predcessor
 func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
 	if err != nil {
@@ -334,6 +343,80 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 		case pbProtoVnode:
 			pbMsg := decoded.TransportMsg.(PBProtoVnode)
 			resp_c <- &Vnode{Host: pbMsg.GetHost(), Id: pbMsg.GetId()}
+			return
+		default:
+			// unexpected response
+			error_c <- fmt.Errorf("ZMQ::GetPredecessor - unexpected response")
+			return
+		}
+	}()
+
+	select {
+	case <-time.After(transport.clientTimeout):
+		return nil, fmt.Errorf("ZMQ::GetPredecessor - command timed out!")
+	case err := <-error_c:
+		return nil, err
+	case resp_vnode := <-resp_c:
+		return resp_vnode, nil
+	}
+}
+
+// Client Request: notify successor of our existence and get the list of its successors
+func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
+	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+	if err != nil {
+		return nil, err
+	}
+	defer req_sock.Close()
+	err = req_sock.Connect("tcp://" + remote.Host)
+	if err != nil {
+		return nil, err
+	}
+	error_c := make(chan error, 1)
+	resp_c := make(chan []*Vnode, 1)
+
+	go func() {
+		// Build request protobuf
+		dest := &PBProtoVnode{
+			Host: proto.String(remote.Host),
+			Id:   remote.Id,
+		}
+		self_pbvn := &PBProtoVnode{
+			Host: proto.String(self.Host),
+			Id:   self.Id,
+		}
+		req := &PBProtoNotify{
+			Dest:  dest,
+			Vnode: self_pbvn,
+		}
+		reqData, _ := proto.Marshal(req)
+		encoded := transport.Encode(pbNotify, reqData)
+		req_sock.SendBytes(encoded, 0)
+
+		// read response and decode it
+		resp, err := req_sock.RecvBytes(0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ::Notify - error while reading response - %s", err)
+			return
+		}
+		decoded, err := transport.Decode(resp)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ::Notify - error while decoding response - %s", err)
+			return
+		}
+
+		switch decoded.Type {
+		case pbErr:
+			pbMsg := decoded.TransportMsg.(PBProtoErr)
+			error_c <- fmt.Errorf("ZMQ::Notify - got error response - %s", pbMsg.GetError())
+			return
+		case pbListVnodesResp:
+			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
+			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
+			for idx, pbVnode := range pbMsg.GetVnodes() {
+				vnodes[idx] = &Vnode{Id: pbVnode.GetId(), Host: pbVnode.GetHost()}
+			}
+			resp_c <- vnodes
 			return
 		default:
 			// unexpected response

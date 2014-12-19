@@ -76,3 +76,32 @@ func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 	}
 	return &vn.Vnode
 }
+
+// Notifies our successor of us, updates successor list
+func (vn *localVnode) notifySuccessor() error {
+	// Notify successor
+	succ := vn.successors[0]
+	succ_list, err := vn.ring.transport.Notify(succ, &vn.Vnode)
+	if err != nil {
+		return err
+	}
+
+	// Trim the successors list if too long
+	max_succ := vn.ring.config.NumSuccessors
+	if len(succ_list) > max_succ-1 {
+		succ_list = succ_list[:max_succ-1]
+	}
+
+	// Update local successors list
+	for idx, s := range succ_list {
+		if s == nil {
+			break
+		}
+		// Ensure we don't set ourselves as a successor!
+		if s == nil || s.String() == vn.String() {
+			break
+		}
+		vn.successors[idx+1] = s
+	}
+	return nil
+}

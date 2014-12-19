@@ -9,6 +9,7 @@ import (
 type VnodeHandler interface {
 	FindSuccessors([]byte, int) ([]*Vnode, *Vnode, error) // args: key, limit # returns: succs, forward, error
 	GetPredecessor() (*Vnode, error)
+	Notify(*Vnode) ([]*Vnode, error)
 }
 
 // localVnode implements vnodeHandler interface
@@ -50,4 +51,23 @@ func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 		return nil, fmt.Errorf("predecessor not set yet")
 	}
 	return vn.predecessor, nil
+}
+
+// Notify is invoked when a Vnode gets notified
+func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
+	// Check if we should update our predecessor
+	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
+		// Inform the delegate
+		//conf := vn.ring.config
+		//old := vn.predecessor
+		/*
+			vn.ring.invokeDelegate(func() {
+				conf.Delegate.NewPredecessor(&vn.Vnode, maybe_pred, old)
+			})
+		*/
+		vn.predecessor = maybe_pred
+	}
+
+	// Return our successors list
+	return vn.successors, nil
 }

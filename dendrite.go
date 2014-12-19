@@ -27,7 +27,7 @@ type Transport interface {
 	GetPredecessor(*Vnode) (*Vnode, error)
 
 	// Notify our successor of ourselves
-	//Notify(target, self *Vnode) ([]*Vnode, error)
+	Notify(dest, self *Vnode) ([]*Vnode, error)
 
 	// Find a successors for vnode key
 	FindSuccessors(*Vnode, int, []byte) ([]*Vnode, error)

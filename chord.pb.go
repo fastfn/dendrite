@@ -19,6 +19,7 @@ It has these top-level messages:
 	PBProtoListVnodesResp
 	PBProtoFindSuccessors
 	PBProtoGetPredecessor
+	PBProtoNotify
 */
 package dendrite
 
@@ -228,6 +229,31 @@ func (*PBProtoGetPredecessor) ProtoMessage()    {}
 func (m *PBProtoGetPredecessor) GetDest() *PBProtoVnode {
 	if m != nil {
 		return m.Dest
+	}
+	return nil
+}
+
+// notify successor (dest) of vnode's existence
+type PBProtoNotify struct {
+	Dest             *PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Vnode            *PBProtoVnode `protobuf:"bytes,2,req,name=vnode" json:"vnode,omitempty"`
+	XXX_unrecognized []byte        `json:"-"`
+}
+
+func (m *PBProtoNotify) Reset()         { *m = PBProtoNotify{} }
+func (m *PBProtoNotify) String() string { return proto.CompactTextString(m) }
+func (*PBProtoNotify) ProtoMessage()    {}
+
+func (m *PBProtoNotify) GetDest() *PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBProtoNotify) GetVnode() *PBProtoVnode {
+	if m != nil {
+		return m.Vnode
 	}
 	return nil
 }

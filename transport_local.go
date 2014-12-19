@@ -106,3 +106,16 @@ func (lt *LocalTransport) GetPredecessor(vn *Vnode) (*Vnode, error) {
 	}
 	return lt.remote.GetPredecessor(vn)
 }
+
+func (lt *LocalTransport) Notify(dest, self *Vnode) ([]*Vnode, error) {
+	// Look for it locally
+	handler, ok := lt.getVnodeHandler(dest)
+
+	// If it exists locally, handle it
+	if ok {
+		return handler.Notify(self)
+	}
+
+	// Pass onto remote
+	return lt.remote.Notify(dest, self)
+}

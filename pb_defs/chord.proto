@@ -57,3 +57,9 @@ message PBProtoFindSuccessors {
 message PBProtoGetPredecessor {
 	required PBProtoVnode dest = 1;
 }
+
+// notify successor (dest) of vnode's existence
+message PBProtoNotify {
+	required PBProtoVnode dest = 1;
+	required PBProtoVnode vnode = 2;
+}

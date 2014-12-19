@@ -27,7 +27,7 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 		h, _ := transport.getVnodeHandler(handler.vn)
 		local_vn := h.(*localVnode)
 		for _, vnode := range local_vn.ring.vnodes {
-			pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{Id: vnode.Id, Host: &vnode.Host})
+			pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{Id: vnode.Id, Host: proto.String(vnode.Host)})
 		}
 		break
 	}
@@ -140,6 +140,50 @@ func (transport *ZMQTransport) zmq_get_predecessor_handler(request *ChordMsg, w 
 		Data: pbdata,
 	}
 
+}
+
+// handle Notify() request
+func (transport *ZMQTransport) zmq_notify_handler(request *ChordMsg, w chan *ChordMsg) {
+	pbMsg := request.TransportMsg.(PBProtoNotify)
+	dest := &Vnode{
+		Id:   pbMsg.GetDest().GetId(),
+		Host: pbMsg.GetDest().GetHost(),
+	}
+	// make sure destination vnode exists locally
+	local_vn, err := transport.getVnodeHandler(dest)
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::NotifyHandler - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	pred := &Vnode{
+		Id:   pbMsg.GetVnode().GetId(),
+		Host: pbMsg.GetVnode().GetHost(),
+	}
+	succ_list, err := local_vn.Notify(pred)
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::NotifyHandler - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	pblist := new(PBProtoListVnodesResp)
+	for _, succ := range succ_list {
+		pblist.Vnodes = append(pblist.Vnodes, &PBProtoVnode{
+			Id:   succ.Id,
+			Host: proto.String(succ.Host),
+		})
+	}
+
+	pbdata, err := proto.Marshal(pblist)
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::Notify - Failed to marshal response - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	w <- &ChordMsg{
+		Type: pbListVnodesResp,
+		Data: pbdata,
+	}
 }
 
 func (transport *ZMQTransport) zmq_leave_handler(request *ChordMsg, w chan *ChordMsg) {
