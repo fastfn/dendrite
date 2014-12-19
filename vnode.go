@@ -49,6 +49,10 @@ func (vn *localVnode) schedule() {
 
 func (vn *localVnode) stabilize() {
 	defer vn.schedule()
+	// Notify the successor
+	if err := vn.notifySuccessor(); err != nil {
+		log.Printf("[stabilize] Error notifying successor: %s", err)
+	}
 
 }
 
