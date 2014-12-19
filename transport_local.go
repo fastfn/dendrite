@@ -98,3 +98,11 @@ func (lt *LocalTransport) Ping(vn *Vnode) (bool, error) {
 	// ping remote
 	return lt.remote.Ping(vn)
 }
+
+func (lt *LocalTransport) GetPredecessor(vn *Vnode) (*Vnode, error) {
+	local_vn, ok := lt.getVnodeHandler(vn)
+	if ok {
+		return local_vn.GetPredecessor()
+	}
+	return lt.remote.GetPredecessor(vn)
+}

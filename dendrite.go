@@ -22,8 +22,9 @@ type Transport interface {
 
 	// Ping a Vnode, check for liveness
 	Ping(*Vnode) (bool, error)
-	// Request a nodes predecessor
-	//GetPredecessor(*Vnode) (*Vnode, error)
+
+	// Request a vnode's predecessor
+	GetPredecessor(*Vnode) (*Vnode, error)
 
 	// Notify our successor of ourselves
 	//Notify(target, self *Vnode) ([]*Vnode, error)

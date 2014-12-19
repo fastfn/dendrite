@@ -33,7 +33,7 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 	}
 	pbdata, err := proto.Marshal(pblist)
 	if err != nil {
-		errorMsg := transport.newErrorMsg("Failed to marshal listVnodes response - " + err.Error())
+		errorMsg := transport.newErrorMsg("ZMQ::ListVnodesHandler - failed to marshal response - " + err.Error())
 		w <- errorMsg
 		return
 	}
@@ -54,14 +54,14 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 	// make sure destination vnode exists locally
 	local_vn, err := transport.getVnodeHandler(dest)
 	if err != nil {
-		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - " + err.Error())
+		errorMsg := transport.newErrorMsg("ZMQ::FindSuccessorsHandler - " + err.Error())
 		w <- errorMsg
 		return
 	}
 
 	succs, forward_vn, err := local_vn.FindSuccessors(key, int(pbMsg.GetLimit()))
 	if err != nil {
-		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - " + err.Error())
+		errorMsg := transport.newErrorMsg("ZMQ::FindSuccessorsHandler - " + err.Error())
 		w <- errorMsg
 		return
 	}
@@ -79,7 +79,7 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		}
 		pbdata, err := proto.Marshal(pblist)
 		if err != nil {
-			errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - Failed to marshal listVnodes response - " + err.Error())
+			errorMsg := transport.newErrorMsg("ZMQ::FindSuccessorsHandler - failed to marshal response - " + err.Error())
 			w <- errorMsg
 			return
 		}
@@ -97,7 +97,7 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 	pbfwd := &PBProtoForward{Vnode: new_remote}
 	pbdata, err := proto.Marshal(pbfwd)
 	if err != nil {
-		errorMsg := transport.newErrorMsg("Transport::FindSuccessorsHandler - Failed to marshal forward response - " + err.Error())
+		errorMsg := transport.newErrorMsg("ZMQ::FindSuccessorsHandler - failed to marshal forward response - " + err.Error())
 		w <- errorMsg
 		return
 	}
@@ -105,6 +105,41 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		Type: pbForward,
 		Data: pbdata,
 	}
+}
+
+func (transport *ZMQTransport) zmq_get_predecessor_handler(request *ChordMsg, w chan *ChordMsg) {
+	pbMsg := request.TransportMsg.(PBProtoGetPredecessor)
+	dest := &Vnode{
+		Id:   pbMsg.GetDest().GetId(),
+		Host: pbMsg.GetDest().GetHost(),
+	}
+	// make sure destination vnode exists locally
+	local_vn, err := transport.getVnodeHandler(dest)
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::GetPredecessorHandler - " + err.Error())
+		w <- errorMsg
+		return
+	}
+
+	pred, err := local_vn.GetPredecessor()
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::GetPredecessorHandler - " + err.Error())
+		w <- errorMsg
+		return
+	}
+
+	pbpred := &PBProtoVnode{Id: pred.Id, Host: proto.String(pred.Host)}
+	pbdata, err := proto.Marshal(pbpred)
+	if err != nil {
+		errorMsg := transport.newErrorMsg("ZMQ::GetPredecessorHandler - Failed to marshal response - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	w <- &ChordMsg{
+		Type: pbProtoVnode,
+		Data: pbdata,
+	}
+
 }
 
 func (transport *ZMQTransport) zmq_leave_handler(request *ChordMsg, w chan *ChordMsg) {

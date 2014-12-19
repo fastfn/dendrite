@@ -1,12 +1,15 @@
 package dendrite
 
-import ()
+import (
+	"fmt"
+)
 
 // handles vnode operations
 // transports use this interface to avoid duplicate implementations
 type VnodeHandler interface {
 	FindSuccessors([]byte, int) ([]*Vnode, *Vnode, error) // args: key, limit # returns: succs, forward, error
 	ListVnodes()
+	GetPredecessor() (*Vnode, error)
 }
 
 // localVnode implements vnodeHandler interface
@@ -45,4 +48,11 @@ func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, e
 
 func (vn *localVnode) ListVnodes() {
 
+}
+
+func (vn *localVnode) GetPredecessor() (*Vnode, error) {
+	if vn.predecessor == nil {
+		return nil, fmt.Errorf("predecessor not set yet")
+	}
+	return vn.predecessor, nil
 }

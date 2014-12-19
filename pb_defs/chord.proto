@@ -52,3 +52,8 @@ message PBProtoFindSuccessors {
 	required PBProtoVnode dest = 2;
 	optional int32 limit = 3;
 }
+
+// request immediate predecessor from vnode
+message PBProtoGetPredecessor {
+	required PBProtoVnode dest = 1;
+}

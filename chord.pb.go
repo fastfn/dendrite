@@ -18,6 +18,7 @@ It has these top-level messages:
 	PBProtoListVnodes
 	PBProtoListVnodesResp
 	PBProtoFindSuccessors
+	PBProtoGetPredecessor
 */
 package dendrite
 
@@ -115,7 +116,7 @@ func (m *PBProtoErr) GetError() string {
 
 // response which says request should be made to another host
 type PBProtoForward struct {
-	Vnode            *PBProtoVnode `protobuf:"bytes,2,req,name=vnode" json:"vnode,omitempty"`
+	Vnode            *PBProtoVnode `protobuf:"bytes,1,req,name=vnode" json:"vnode,omitempty"`
 	XXX_unrecognized []byte        `json:"-"`
 }
 
@@ -212,6 +213,23 @@ func (m *PBProtoFindSuccessors) GetLimit() int32 {
 		return *m.Limit
 	}
 	return 0
+}
+
+// request immediate predecessor from vnode
+type PBProtoGetPredecessor struct {
+	Dest             *PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	XXX_unrecognized []byte        `json:"-"`
+}
+
+func (m *PBProtoGetPredecessor) Reset()         { *m = PBProtoGetPredecessor{} }
+func (m *PBProtoGetPredecessor) String() string { return proto.CompactTextString(m) }
+func (*PBProtoGetPredecessor) ProtoMessage()    {}
+
+func (m *PBProtoGetPredecessor) GetDest() *PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
 }
 
 func init() {
