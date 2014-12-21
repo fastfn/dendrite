@@ -71,7 +71,7 @@ func (vn *localVnode) stabilize() {
 	if err := vn.checkPredecessor(); err != nil {
 		log.Println("[stabilize] Error checking predcessor:", err)
 	}
-	vn.ring.Stabilizations += 1
+	log.Printf("checkPred returned for %X\n", vn.Id)
 }
 
 // returns successor for requested id
@@ -175,6 +175,7 @@ func (vn *localVnode) notifySuccessor() error {
 
 // Checks the health of our predecessor
 func (vn *localVnode) checkPredecessor() error {
+	log.Println("[stabilize] checkPredcessor started...")
 	// Check predecessor
 	if vn.predecessor != nil {
 		ok, err := vn.ring.transport.Ping(vn.predecessor)

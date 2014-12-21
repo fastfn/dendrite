@@ -158,25 +158,29 @@ func (transport *ZMQTransport) Register(vnode *Vnode, handler VnodeHandler) {
 
 // Client Request: list of vnodes from remote host
 func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
-	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
-	if err != nil {
-		return nil, err
-	}
-	defer req_sock.Close()
-
-	err = req_sock.Connect("tcp://" + host)
-	if err != nil {
-		return nil, err
-	}
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
 
 	go func() {
+		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			return
+		}
+		req_sock.SetRcvtimeo(2 * time.Second)
+		req_sock.SetSndtimeo(2 * time.Second)
+
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			return
+		}
 		// Build request protobuf
 		req := new(PBProtoListVnodes)
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbListVnodes, reqData)
-		_, err := req_sock.SendBytes(encoded, 0)
+		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::ListVnodes - error while sending request - %s", err)
 			return
@@ -226,20 +230,25 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 
 // Client Request: find successors for vnode key, by asking remote vnode
 func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []byte) ([]*Vnode, error) {
-	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
-	if err != nil {
-		return nil, err
-	}
-	defer req_sock.Close()
-	err = req_sock.Connect("tcp://" + remote.Host)
-	if err != nil {
-		return nil, err
-	}
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
 	forward_c := make(chan *Vnode, 1)
 
 	go func() {
+		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			return
+		}
+		req_sock.SetRcvtimeo(2 * time.Second)
+		req_sock.SetSndtimeo(2 * time.Second)
+
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + remote.Host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			return
+		}
 		// Build request protobuf
 		dest := &PBProtoVnode{
 			Host: proto.String(remote.Host),
@@ -252,7 +261,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbFindSuccessors, reqData)
-		_, err := req_sock.SendBytes(encoded, 0)
+		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::FindSuccessors - error while sending request - %s", err)
 			return
@@ -312,7 +321,6 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 
 // Client Request: get vnode's predcessor
 func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
-
 	error_c := make(chan error, 1)
 	resp_c := make(chan *Vnode, 1)
 
@@ -322,6 +330,9 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
 			return
 		}
+		req_sock.SetRcvtimeo(2 * time.Second)
+		req_sock.SetSndtimeo(2 * time.Second)
+
 		defer req_sock.Close()
 		err = req_sock.Connect("tcp://" + remote.Host)
 		if err != nil {
@@ -384,19 +395,25 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 
 // Client Request: notify successor of our existence and get the list of its successors
 func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
-	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
-	if err != nil {
-		return nil, err
-	}
-	defer req_sock.Close()
-	err = req_sock.Connect("tcp://" + remote.Host)
-	if err != nil {
-		return nil, err
-	}
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
 
 	go func() {
+		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			return
+		}
+		req_sock.SetRcvtimeo(2 * time.Second)
+		req_sock.SetSndtimeo(2 * time.Second)
+
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + remote.Host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			return
+		}
+
 		// Build request protobuf
 		dest := &PBProtoVnode{
 			Host: proto.String(remote.Host),
@@ -412,7 +429,7 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbNotify, reqData)
-		_, err := req_sock.SendBytes(encoded, 0)
+		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::Notify - error while sending request - %s", err)
 			return
@@ -471,6 +488,9 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	req_sock.SetRcvtimeo(2 * time.Second)
+	req_sock.SetSndtimeo(2 * time.Second)
+
 	pbPingMsg := &PBProtoPing{
 		Version: proto.Int64(1),
 	}
