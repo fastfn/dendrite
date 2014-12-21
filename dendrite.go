@@ -63,8 +63,8 @@ func DefaultConfig(hostname string) *Config {
 		// N is approximate number of real nodes in cluster
 		// this way we get O(logN) lookup speed
 		NumVnodes:     3,
-		StabilizeMin:  7 * time.Second,
-		StabilizeMax:  10 * time.Second,
+		StabilizeMin:  1 * time.Second,
+		StabilizeMax:  3 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
 	}
 }
