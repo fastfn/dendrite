@@ -63,17 +63,18 @@ func DefaultConfig(hostname string) *Config {
 		// N is approximate number of real nodes in cluster
 		// this way we get O(logN) lookup speed
 		NumVnodes:     3,
-		StabilizeMin:  15 * time.Second,
-		StabilizeMax:  45 * time.Second,
+		StabilizeMin:  7 * time.Second,
+		StabilizeMax:  9 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
 	}
 }
 
 type Ring struct {
-	config    *Config
-	transport Transport
-	vnodes    []*localVnode
-	shutdown  chan bool
+	config         *Config
+	transport      Transport
+	vnodes         []*localVnode
+	shutdown       chan bool
+	Stabilizations int
 }
 
 // implement sort.Interface (Len(), Less() and Swap())

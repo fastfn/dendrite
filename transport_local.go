@@ -1,6 +1,9 @@
 package dendrite
 
 import (
+	//"bytes"
+	//"fmt"
+	//"log"
 	"sync"
 )
 
@@ -52,7 +55,6 @@ func (lt *LocalTransport) getVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
 func (lt *LocalTransport) FindSuccessors(vn *Vnode, limit int, key []byte) ([]*Vnode, error) {
 	// Look for it locally
 	handler, ok := lt.getVnodeHandler(vn)
-
 	// If it exists locally, handle it
 	if ok {
 		succs, forward_vn, err := handler.FindSuccessors(key, limit)

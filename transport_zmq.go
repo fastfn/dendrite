@@ -128,6 +128,13 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = notifyMsg
 		cm.TransportHandler = transport.zmq_notify_handler
+	case pbProtoVnode:
+		var vnodeMsg PBProtoVnode
+		err := proto.Unmarshal(cm.Data, &vnodeMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBProtoVnode message - %s", err)
+		}
+		cm.TransportMsg = vnodeMsg
 	default:
 		return nil, fmt.Errorf("error decoding message - unknown request type %x", cm.Type)
 	}
@@ -169,7 +176,11 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 		req := new(PBProtoListVnodes)
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbListVnodes, reqData)
-		req_sock.SendBytes(encoded, 0)
+		_, err := req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ::ListVnodes - error while sending request - %s", err)
+			return
+		}
 
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
@@ -241,7 +252,11 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbFindSuccessors, reqData)
-		req_sock.SendBytes(encoded, 0)
+		_, err := req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ::FindSuccessors - error while sending request - %s", err)
+			return
+		}
 
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
@@ -286,7 +301,6 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	select {
 	case <-time.After(transport.clientTimeout):
 		return nil, fmt.Errorf("ZMQ::FindSuccessors - command timed out!")
-
 	case err := <-error_c:
 		return nil, err
 	case new_remote := <-forward_c:
@@ -298,19 +312,22 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 
 // Client Request: get vnode's predcessor
 func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
-	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
-	if err != nil {
-		return nil, err
-	}
-	defer req_sock.Close()
-	err = req_sock.Connect("tcp://" + remote.Host)
-	if err != nil {
-		return nil, err
-	}
+
 	error_c := make(chan error, 1)
 	resp_c := make(chan *Vnode, 1)
 
 	go func() {
+		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			return
+		}
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + remote.Host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			return
+		}
 		// Build request protobuf
 		dest := &PBProtoVnode{
 			Host: proto.String(remote.Host),
@@ -321,7 +338,11 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbGetPredecessor, reqData)
-		req_sock.SendBytes(encoded, 0)
+		_, err = req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:GetPredecessor - error while sending request - %s", err)
+			return
+		}
 
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
@@ -391,7 +412,11 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(pbNotify, reqData)
-		req_sock.SendBytes(encoded, 0)
+		_, err := req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ::Notify - error while sending request - %s", err)
+			return
+		}
 
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
@@ -451,8 +476,14 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	}
 	pbPingData, _ := proto.Marshal(pbPingMsg)
 	encoded := transport.Encode(pbPing, pbPingData)
-	req_sock.SendBytes(encoded, 0)
-	resp, _ := req_sock.RecvBytes(0)
+	_, err = req_sock.SendBytes(encoded, 0)
+	if err != nil {
+		return false, err
+	}
+	resp, err := req_sock.RecvBytes(0)
+	if err != nil {
+		return false, err
+	}
 	decoded, err := transport.Decode(resp)
 	if err != nil {
 		return false, err

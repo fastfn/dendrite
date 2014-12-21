@@ -135,6 +135,7 @@ func (transport *ZMQTransport) zmq_get_predecessor_handler(request *ChordMsg, w 
 		w <- errorMsg
 		return
 	}
+
 	w <- &ChordMsg{
 		Type: pbProtoVnode,
 		Data: pbdata,

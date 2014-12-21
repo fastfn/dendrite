@@ -2,6 +2,7 @@ package dendrite
 
 import (
 	"bytes"
+	//"log"
 	"math/big"
 	"math/rand"
 	"time"
@@ -24,47 +25,25 @@ func randStabilize(conf *Config) time.Duration {
 	return time.Duration((r * float64(max-min)) + float64(min))
 }
 
-// checks if target is between start and end, optionally check if equal to end
-func between(start, end, target []byte, rincl bool) bool {
-	var a, b, c big.Int
-	(&a).SetBytes(start)
-	(&b).SetBytes(end)
-	(&c).SetBytes(target)
-	ab_dist := distance(&a, &b)
-	ac_dist := distance(&a, &c)
-	cmp := ab_dist.Cmp(ac_dist)
-	switch cmp {
-	case -1:
-		return false
-	case 0:
+// Checks if a key is STRICTLY between two ID's exclusively
+func between(id1, id2, key []byte, rincl bool) bool {
+	// Check for ring wrap around
+	if bytes.Compare(id1, id2) == 1 {
 		if rincl {
-			return true
-		} else {
-			return false
+			return bytes.Compare(id1, key) == -1 ||
+				bytes.Compare(id2, key) >= 0
 		}
-	default:
-		return true
+		return bytes.Compare(id1, key) == -1 ||
+			bytes.Compare(id2, key) == 1
 	}
-}
 
-// calculates distance in ring between a and b
-func distance(a, b *big.Int) *big.Int {
-	cmp := a.Cmp(b)
-	dist := big.NewInt(0)
-	switch cmp {
-	case 0:
-		// a == b
-		return dist
-	case -1:
-		// a < b
-		return dist.Sub(b, a)
-	default:
-		// a > b, ring loop
-		ring_len := big.NewInt(0)
-		ring_len.Exp(big.NewInt(2), big.NewInt(160), nil)
-		dist.Sub(ring_len, a)
-		return dist.Add(dist, b)
+	// Handle the normal case
+	if rincl {
+		return bytes.Compare(id1, key) == -1 &&
+			bytes.Compare(id2, key) >= 0
 	}
+	return bytes.Compare(id1, key) == -1 &&
+		bytes.Compare(id2, key) == 1
 }
 
 // Returns the vnode nearest a key
@@ -76,4 +55,34 @@ func nearestVnodeToKey(vnodes []*Vnode, key []byte) *Vnode {
 	}
 	// Return the last vnode
 	return vnodes[len(vnodes)-1]
+}
+
+// Computes the offset by (n + 2^exp) % (2^mod)
+func powerOffset(id []byte, exp int, mod int) []byte {
+	// Copy the existing slice
+	off := make([]byte, len(id))
+	copy(off, id)
+
+	// Convert the ID to a bigint
+	idInt := big.Int{}
+	idInt.SetBytes(id)
+
+	// Get the offset
+	two := big.NewInt(2)
+	offset := big.Int{}
+	offset.Exp(two, big.NewInt(int64(exp)), nil)
+
+	// Sum
+	sum := big.Int{}
+	sum.Add(&idInt, &offset)
+
+	// Get the ceiling
+	ceil := big.Int{}
+	ceil.Exp(two, big.NewInt(int64(mod)), nil)
+
+	// Apply the mod
+	idInt.Mod(&sum, &ceil)
+
+	// Add together
+	return idInt.Bytes()
 }
