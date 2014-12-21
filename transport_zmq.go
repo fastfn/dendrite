@@ -3,7 +3,7 @@ package dendrite
 import (
 	"github.com/golang/protobuf/proto"
 	zmq "github.com/pebbe/zmq4"
-	"log"
+	//"log"
 	//"sync"
 	"bytes"
 	"fmt"
@@ -164,7 +164,7 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 	go func() {
 		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:ListVnodes - newsocket error - %s", err)
 			return
 		}
 		req_sock.SetRcvtimeo(2 * time.Second)
@@ -173,7 +173,7 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 		defer req_sock.Close()
 		err = req_sock.Connect("tcp://" + host)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:ListVnodes - connect error - %s", err)
 			return
 		}
 		// Build request protobuf
@@ -237,7 +237,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	go func() {
 		req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:GetPredecessor - newsocket error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:FindSuccessors - newsocket error - %s", err)
 			return
 		}
 		req_sock.SetRcvtimeo(2 * time.Second)
@@ -246,7 +246,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		defer req_sock.Close()
 		err = req_sock.Connect("tcp://" + remote.Host)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:GetPredecessor - connect error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:FindSuccessors - connect error - %s", err)
 			return
 		}
 		// Build request protobuf
@@ -270,7 +270,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ::FindSuccessors - error while reading response - %s", err)
+			error_c <- fmt.Errorf("ZMQ::FindSuccessors - error while reading response - %s %X", err, remote.Id)
 			return
 		}
 		decoded, err := transport.Decode(resp)
@@ -513,6 +513,6 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	log.Println("Got pong with version:", pongMsg.GetVersion())
+	//log.Println("Got pong with version:", pongMsg.GetVersion())
 	return true, nil
 }

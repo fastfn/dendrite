@@ -86,3 +86,27 @@ func powerOffset(id []byte, exp int, mod int) []byte {
 	// Add together
 	return idInt.Bytes()
 }
+
+func distance(a, b []byte) *big.Int {
+	// Get the ring size
+	var ring big.Int
+	ring.Exp(big.NewInt(2), big.NewInt(int64(160)), nil)
+	// Convert to int
+	var a_int, b_int, dist big.Int
+	(&a_int).SetBytes(a)
+	(&b_int).SetBytes(b)
+	(&dist).SetInt64(0)
+
+	cmp := bytes.Compare(a, b)
+	switch cmp {
+	case 0:
+		return &dist
+	case -1:
+		return (&dist).Sub(&b_int, &a_int)
+	default:
+		// loop the ring
+		(&dist).Sub(&ring, &a_int)
+		return (&dist).Add(&dist, &b_int)
+	}
+
+}

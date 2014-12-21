@@ -4,12 +4,10 @@ import (
 	//"bytes"
 	//"fmt"
 	"github.com/golang/protobuf/proto"
-	"log"
+	//"log"
 )
 
 func (transport *ZMQTransport) zmq_ping_handler(request *ChordMsg, w chan *ChordMsg) {
-	pingMsg := request.TransportMsg.(PBProtoPing)
-	log.Println("handling ping", pingMsg.GetVersion())
 	pbPongMsg := &PBProtoPing{
 		Version: proto.Int64(1),
 	}
@@ -127,8 +125,11 @@ func (transport *ZMQTransport) zmq_get_predecessor_handler(request *ChordMsg, w 
 		w <- errorMsg
 		return
 	}
-
-	pbpred := &PBProtoVnode{Id: pred.Id, Host: proto.String(pred.Host)}
+	pbpred := &PBProtoVnode{}
+	if pred != nil {
+		pbpred.Id = pred.Id
+		pbpred.Host = proto.String(pred.Host)
+	}
 	pbdata, err := proto.Marshal(pbpred)
 	if err != nil {
 		errorMsg := transport.newErrorMsg("ZMQ::GetPredecessorHandler - Failed to marshal response - " + err.Error())

@@ -64,7 +64,7 @@ func DefaultConfig(hostname string) *Config {
 		// this way we get O(logN) lookup speed
 		NumVnodes:     3,
 		StabilizeMin:  7 * time.Second,
-		StabilizeMax:  9 * time.Second,
+		StabilizeMax:  10 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
 	}
 }
@@ -94,6 +94,12 @@ func (r *Ring) Len() int {
 // Vnodes need to be sorted before this method is called
 func (r *Ring) setLocalSuccessors() {
 	numV := len(r.vnodes)
+	if numV == 1 {
+		for _, vnode := range r.vnodes {
+			vnode.successors[0] = &vnode.Vnode
+		}
+		return
+	}
 	// we use numV-1 in order to avoid setting ourselves as last successor
 	numSuc := min(r.config.NumSuccessors, numV-1)
 	for idx, vnode := range r.vnodes {

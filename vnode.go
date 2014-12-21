@@ -50,95 +50,117 @@ func (vn *localVnode) schedule() {
 }
 
 func (vn *localVnode) stabilize() {
-	log.Printf("[stabilize] running on %X - %X\n", vn.Id, vn.successors[0].Id)
 	defer vn.schedule()
 
+	start := time.Now()
 	if err := vn.checkNewSuccessor(); err != nil {
 		log.Println("[stabilize] Error checking successor:", err)
 	}
-	log.Printf("CheckSucc returned for %X - %X\n", vn.Id, vn.successors[0].Id)
+	//log.Printf("CheckSucc returned for %X - %X\n", vn.Id, vn.successors[0].Id)
 
 	// Notify the successor
 	if err := vn.notifySuccessor(); err != nil {
 		log.Println("[stabilize] Error notifying successor:", err)
 	}
-	log.Printf("NotifySucc returned for %X\n", vn.Id)
+	//log.Printf("NotifySucc returned for %X\n", vn.Id)
 
 	if err := vn.fixFingerTable(); err != nil {
 		log.Println("[stabilize] Error fixing finger table, last:", vn.last_finger, err)
 	}
 
 	if err := vn.checkPredecessor(); err != nil {
-		log.Println("[stabilize] Error checking predcessor:", err)
+		log.Printf("[stabilize] Predecessor failed for %X - %s\n", vn.Id, err)
 	}
-	log.Printf("checkPred returned for %X\n", vn.Id)
-}
-
-// returns successor for requested id
-// second return argument indicates whether client should forward request to another node
-func (vn *localVnode) find_successor(id []byte) (*Vnode, bool) {
-	// check if Id falls between me and my successor
-	if between(vn.Id, vn.successors[0].Id, id, true) {
-		return vn.successors[0], false
-	}
-	return vn.closest_preceeding_finger(id), true
+	log.Println("[stabilize] completed in", time.Since(start))
 }
 
 // Find closest preceeding finger node
 func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
-	// keysize(i) down to 1
+	var finger_node, successor_node *Vnode
+
+	// loop through finger table, keysize(i) down to 1
 	for i := vn.last_finger; i >= 0; i-- {
 		if vn.finger[i] == nil {
 			continue
 		}
 		// check if id falls after this finger (finger[i] IN (n, id))
 		if between(vn.Id, id, vn.finger[i].Id, false) {
-			return vn.finger[i]
+			finger_node = vn.finger[i]
+			break
 		}
 	}
-	return &vn.Vnode
+
+	// loop through successors
+	for i := len(vn.successors) - 1; i >= 1; i-- {
+		if vn.successors[i] == nil {
+			continue
+		}
+		if between(vn.Id, id, vn.successors[i].Id, false) {
+			successor_node = vn.successors[i]
+			break
+		}
+	}
+
+	// return the best result
+	if finger_node == nil {
+		if successor_node == nil {
+			return &vn.Vnode
+		}
+		return successor_node
+	}
+	if successor_node == nil {
+		return finger_node
+	}
+
+	finger_dist := distance(vn.Id, finger_node.Id)
+	successor_dist := distance(vn.Id, successor_node.Id)
+	if finger_dist.Cmp(successor_dist) <= 0 {
+		return successor_node
+	} else {
+		return finger_node
+	}
+	return nil
 }
 
 // Check if there's new successor ahead
 func (vn *localVnode) checkNewSuccessor() error {
-	// Ask our successor for it's predecessor
-	maybe_suc, err := vn.ring.transport.GetPredecessor(vn.successors[0])
-	if err != nil {
-		log.Println("[stabilize]", err)
-		log.Println("[stabilize]... trying next known successor")
-
-		for i := 1; i < len(vn.successors); i++ {
-			succ := vn.successors[i]
-			if succ == nil {
-				return fmt.Errorf("No successors found for vnode")
-			}
-			if bytes.Compare(succ.Id, vn.Id) == 0 {
-				continue
-			}
-			maybe_suc, err := vn.ring.transport.GetPredecessor(succ)
-
-			if maybe_suc != nil && err != nil && between(vn.Id, succ.Id, maybe_suc.Id, false) {
-				vn.successors[0] = succ
-				copy(vn.successors[i:], vn.successors[i+1:])
-				log.Println("[stabilize] new successor set")
-				return nil
-			} else {
-				log.Println("[stabilize] next successor is not responding, trying next one - ", err)
-				continue
-			}
+	for {
+		if vn.successors[0] == nil {
+			panic("Node has no more successors :(")
 		}
-		return fmt.Errorf("[stabilize] reached end of successor list while trying to find new successor")
-	}
+		// Ask our successor for it's predecessor
+		maybe_suc, err := vn.ring.transport.GetPredecessor(vn.successors[0])
+		if err != nil {
+			log.Println("[stabilize]... trying next known successor due to error:", err)
+			copy(vn.successors[0:], vn.successors[1:])
+			continue
+		}
 
-	// We're good, now check if we should replace our successor
-	if maybe_suc != nil && between(vn.Id, vn.successors[0].Id, maybe_suc.Id, false) {
-		// Check if new successor is alive before switching
-		alive, err := vn.ring.transport.Ping(maybe_suc)
-		if alive && err == nil {
-			copy(vn.successors[1:], vn.successors[0:len(vn.successors)-1])
-			vn.successors[0] = maybe_suc
+		if maybe_suc != nil && between(vn.Id, vn.successors[0].Id, maybe_suc.Id, false) {
+			alive, _ := vn.ring.transport.Ping(maybe_suc)
+			if alive {
+				copy(vn.successors[1:], vn.successors[0:len(vn.successors)-1])
+				vn.successors[0] = maybe_suc
+				log.Println("[stabilize] new successor set")
+			} else {
+				// skip this one, it's not alive
+				//log.Println("[stabilize] new successor found, but it's not alive")
+			}
+			break
 		} else {
-			return err
+			// we're good for now, checkPredcessor should fix this (maybe_suc is nil)
+			break
+		}
+	}
+	// while we're here, ping other successors to make sure they're alive
+	for i := 0; i < len(vn.successors); i++ {
+		if vn.successors[i] == nil {
+			continue
+		}
+		alive, _ := vn.ring.transport.Ping(vn.successors[i])
+		if !alive {
+			//log.Printf("found inactive successor, removing it: %X\n", vn.successors[i].Id)
+			copy(vn.successors[i:], vn.successors[i+1:])
 		}
 	}
 	return nil
@@ -175,24 +197,20 @@ func (vn *localVnode) notifySuccessor() error {
 
 // Checks the health of our predecessor
 func (vn *localVnode) checkPredecessor() error {
-	log.Println("[stabilize] checkPredcessor started...")
 	// Check predecessor
 	if vn.predecessor != nil {
 		ok, err := vn.ring.transport.Ping(vn.predecessor)
-		if err != nil {
-			return err
-		}
-
-		// Predecessor is dead
-		if !ok {
+		if err != nil || !ok {
+			log.Println("[stabilize] detected predecessor failure")
 			vn.predecessor = nil
+			return err
 		}
 	}
 	return nil
 }
 
 func (vn *localVnode) fixFingerTable() error {
-	log.Printf("Starting fixFingerTable, %X - %X\n", vn.Id, vn.successors[0].Id)
+	//log.Printf("Starting fixFingerTable, %X - %X\n", vn.Id, vn.successors[0].Id)
 	idx := 0
 	self := &vn.Vnode
 	for i := 0; i < 160; i++ {
@@ -219,7 +237,7 @@ func (vn *localVnode) fixFingerTable() error {
 		vn.finger[idx] = succs[0]
 		vn.last_finger = idx
 		idx += 1
-		log.Printf("\t\t\t set id: %X\n", succs[0].Id)
+		//log.Printf("\t\t\t set id: %X\n", succs[0].Id)
 	}
 	return nil
 }

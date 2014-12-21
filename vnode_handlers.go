@@ -1,8 +1,8 @@
 package dendrite
 
 import (
-	"fmt"
-	//"log"
+//"fmt"
+//"log"
 )
 
 // handles vnode operations
@@ -35,23 +35,19 @@ func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, e
 			})
 		}
 		return succs, nil, nil
-	} else {
-		//log.Printf("between returned false for %X, %X, key: %X\n", vn.Id, vn.successors[0].Id, key)
 	}
+
 	// if finger table has been initialized - forward request to closest finger
 	// otherwise forward to my successor
-	var forward_vn *Vnode
-	if len(vn.finger) == 0 {
-		forward_vn = vn.successors[0]
-	} else {
-		forward_vn = vn.closest_preceeding_finger(key)
-	}
+
+	forward_vn := vn.closest_preceeding_finger(key)
+	//log.Printf("findsuccessor (%X) forwarding to %X\n", vn.Id, forward_vn.Id)
 	return nil, forward_vn, nil
 }
 
 func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 	if vn.predecessor == nil {
-		return nil, fmt.Errorf("predecessor not set yet")
+		return nil, nil
 	}
 	return vn.predecessor, nil
 }
