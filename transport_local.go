@@ -23,6 +23,10 @@ func InitLocalTransport(remote Transport) Transport {
 	return lt
 }
 
+// Just satisfying interface
+func (lt *LocalTransport) RegisterHook(th TransportHook) {
+}
+
 // no need to Decode or Encode in local transport, just satisfying interface
 func (lt *LocalTransport) Decode(raw []byte) (*ChordMsg, error) {
 	return nil, nil

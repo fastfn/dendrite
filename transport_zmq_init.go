@@ -35,6 +35,11 @@ type ZMQTransport struct {
 	router_sock       *zmq.Socket
 	zmq_context       *zmq.Context
 	workerIdleTimeout time.Duration
+	hooks             []TransportHook
+}
+
+func (t *ZMQTransport) RegisterHook(h TransportHook) {
+	t.hooks = append(t.hooks, h)
 }
 
 // Creates ZeroMQ transport
@@ -84,6 +89,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		dealer_sock:       dealer_sock,
 		router_sock:       router_sock,
 		zmq_context:       context,
+		hooks:             make([]TransportHook, 0),
 	}
 
 	go zmq.Proxy(router_sock, dealer_sock, nil)

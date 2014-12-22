@@ -12,8 +12,22 @@ type MsgType byte
 type ChordMsg struct {
 	Type             MsgType
 	Data             []byte
-	TransportMsg     interface{} // unmarshalled data, depending on transport
-	TransportHandler func(*ChordMsg, chan *ChordMsg)
+	TransportMsg     interface{}                     // unmarshalled data, depending on transport
+	TransportHandler func(*ChordMsg, chan *ChordMsg) // request pointer, response channel
+}
+
+type ErrHookUnknownType string
+
+func (e ErrHookUnknownType) Error() string {
+	return fmt.Sprintf("%s", string(e))
+}
+
+// TransportHook is used to extend base capabilities of a transport in decoding and processing messages
+// 3rd party packages can register their hooks and leverage existing transport architecture and capabilities
+// ZMQTransport allows this extension
+type TransportHook interface {
+	// decode reverses the above process
+	Decode([]byte) (*ChordMsg, error)
 }
 
 type Transport interface {
@@ -44,8 +58,8 @@ type Transport interface {
 	// encode encodes dendrite msg into two frame byte stream
 	// first byte is message type, and the rest is protobuf data
 	Encode(MsgType, []byte) []byte
-	// decode reverses the above process
-	Decode([]byte) (*ChordMsg, error)
+	RegisterHook(TransportHook)
+	TransportHook
 }
 
 type Config struct {

@@ -136,6 +136,20 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = vnodeMsg
 	default:
+		// maybe a TransportHook should handle this?
+		for _, hook := range transport.hooks {
+			if hook_cm, err := hook.Decode(data); err != nil {
+				_, ok := err.(ErrHookUnknownType)
+				if ok {
+					// this hook knows nothing about this message type, try next one
+					continue
+				}
+				return nil, err
+			} else {
+				// hook is handling this!
+				return hook_cm, nil
+			}
+		}
 		return nil, fmt.Errorf("error decoding message - unknown request type %x", cm.Type)
 	}
 
