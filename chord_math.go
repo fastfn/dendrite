@@ -46,15 +46,15 @@ func between(id1, id2, key []byte, rincl bool) bool {
 		bytes.Compare(id2, key) == 1
 }
 
-// Returns the vnode nearest a key
-func nearestVnodeToKey(vnodes []*Vnode, key []byte) *Vnode {
+// Returns the vnode nearest to a key
+func nearestVnodeToKey(vnodes []*localVnode, key []byte) *Vnode {
 	for i := len(vnodes) - 1; i >= 0; i-- {
 		if bytes.Compare(vnodes[i].Id, key) == -1 {
-			return vnodes[i]
+			return &vnodes[i].Vnode
 		}
 	}
 	// Return the last vnode
-	return vnodes[len(vnodes)-1]
+	return &vnodes[len(vnodes)-1].Vnode
 }
 
 // Computes the offset by (n + 2^exp) % (2^mod)

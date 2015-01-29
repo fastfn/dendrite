@@ -1,0 +1,12 @@
+package dtable;
+import "chord.proto";
+message PBDTableGet {
+	required dendrite.PBProtoVnode dest = 1;
+	required bytes key = 2;
+}
+
+message PBDTableGetResp {
+	required bool found = 1;
+	optional bytes value = 2;
+
+}

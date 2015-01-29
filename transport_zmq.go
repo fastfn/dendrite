@@ -12,18 +12,18 @@ import (
 
 const (
 	// protocol buffer messages (for definitions, see pb_defs/chord.go)
-	pbPing MsgType = iota
-	pbAck
-	pbErr
-	pbForward
-	pbJoin
-	pbLeave
-	pbListVnodes
-	pbListVnodesResp
-	pbFindSuccessors
-	pbGetPredecessor
-	pbProtoVnode
-	pbNotify
+	PbPing MsgType = iota
+	PbAck
+	PbErr
+	PbForward
+	PbJoin
+	PbLeave
+	PbListVnodes
+	PbListVnodesResp
+	PbFindSuccessors
+	PbGetPredecessor
+	PbProtoVnode
+	PbNotify
 )
 
 func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
@@ -32,7 +32,18 @@ func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
 	}
 	pbdata, _ := proto.Marshal(pbmsg)
 	return &ChordMsg{
-		Type: pbErr,
+		Type: PbErr,
+		Data: pbdata,
+	}
+
+}
+func (transport *ZMQTransport) NewErrorMsg(msg string) *ChordMsg {
+	pbmsg := &PBProtoErr{
+		Error: proto.String(msg),
+	}
+	pbdata, _ := proto.Marshal(pbmsg)
+	return &ChordMsg{
+		Type: PbErr,
 		Data: pbdata,
 	}
 
@@ -58,7 +69,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 
 	// parse the data and set the handler
 	switch cm.Type {
-	case pbPing:
+	case PbPing:
 		var pingMsg PBProtoPing
 		err := proto.Unmarshal(cm.Data, &pingMsg)
 		if err != nil {
@@ -66,7 +77,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = pingMsg
 		cm.TransportHandler = transport.zmq_ping_handler
-	case pbErr:
+	case PbErr:
 		var errorMsg PBProtoErr
 		err := proto.Unmarshal(cm.Data, &errorMsg)
 		if err != nil {
@@ -74,14 +85,14 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = errorMsg
 		cm.TransportHandler = transport.zmq_error_handler
-	case pbForward:
+	case PbForward:
 		var forwardMsg PBProtoForward
 		err := proto.Unmarshal(cm.Data, &forwardMsg)
 		if err != nil {
 			return nil, fmt.Errorf("error decoding PBProtoForward message - %s", err)
 		}
 		cm.TransportMsg = forwardMsg
-	case pbLeave:
+	case PbLeave:
 		var leaveMsg PBProtoLeave
 		err := proto.Unmarshal(cm.Data, &leaveMsg)
 		if err != nil {
@@ -89,7 +100,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = leaveMsg
 		cm.TransportHandler = transport.zmq_leave_handler
-	case pbListVnodes:
+	case PbListVnodes:
 		var listVnodesMsg PBProtoListVnodes
 		err := proto.Unmarshal(cm.Data, &listVnodesMsg)
 		if err != nil {
@@ -97,14 +108,14 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = listVnodesMsg
 		cm.TransportHandler = transport.zmq_listVnodes_handler
-	case pbListVnodesResp:
+	case PbListVnodesResp:
 		var listVnodesRespMsg PBProtoListVnodesResp
 		err := proto.Unmarshal(cm.Data, &listVnodesRespMsg)
 		if err != nil {
 			return nil, fmt.Errorf("error decoding PBProtoListVnodesResp message - %s", err)
 		}
 		cm.TransportMsg = listVnodesRespMsg
-	case pbFindSuccessors:
+	case PbFindSuccessors:
 		var findSuccMsg PBProtoFindSuccessors
 		err := proto.Unmarshal(cm.Data, &findSuccMsg)
 		if err != nil {
@@ -112,7 +123,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = findSuccMsg
 		cm.TransportHandler = transport.zmq_find_successors_handler
-	case pbGetPredecessor:
+	case PbGetPredecessor:
 		var getPredMsg PBProtoGetPredecessor
 		err := proto.Unmarshal(cm.Data, &getPredMsg)
 		if err != nil {
@@ -120,7 +131,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = getPredMsg
 		cm.TransportHandler = transport.zmq_get_predecessor_handler
-	case pbNotify:
+	case PbNotify:
 		var notifyMsg PBProtoNotify
 		err := proto.Unmarshal(cm.Data, &notifyMsg)
 		if err != nil {
@@ -128,7 +139,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 		}
 		cm.TransportMsg = notifyMsg
 		cm.TransportHandler = transport.zmq_notify_handler
-	case pbProtoVnode:
+	case PbProtoVnode:
 		var vnodeMsg PBProtoVnode
 		err := proto.Unmarshal(cm.Data, &vnodeMsg)
 		if err != nil {
@@ -193,7 +204,7 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 		// Build request protobuf
 		req := new(PBProtoListVnodes)
 		reqData, _ := proto.Marshal(req)
-		encoded := transport.Encode(pbListVnodes, reqData)
+		encoded := transport.Encode(PbListVnodes, reqData)
 		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::ListVnodes - error while sending request - %s", err)
@@ -213,10 +224,10 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 		}
 
 		switch decoded.Type {
-		case pbErr:
+		case PbErr:
 			pbMsg := decoded.TransportMsg.(PBProtoErr)
 			error_c <- fmt.Errorf("ZMQ::ListVnodes - got error response - %s", pbMsg.GetError())
-		case pbListVnodesResp:
+		case PbListVnodesResp:
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
@@ -274,7 +285,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 			Limit: proto.Int32(int32(limit)),
 		}
 		reqData, _ := proto.Marshal(req)
-		encoded := transport.Encode(pbFindSuccessors, reqData)
+		encoded := transport.Encode(PbFindSuccessors, reqData)
 		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::FindSuccessors - error while sending request - %s", err)
@@ -294,11 +305,11 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 		}
 
 		switch decoded.Type {
-		case pbErr:
+		case PbErr:
 			pbMsg := decoded.TransportMsg.(PBProtoErr)
 			error_c <- fmt.Errorf("ZMQ::FindSuccessors - got error response - %s", pbMsg.GetError())
 			return
-		case pbForward:
+		case PbForward:
 			pbMsg := decoded.TransportMsg.(PBProtoForward)
 			vnode := &Vnode{
 				Id:   pbMsg.GetVnode().GetId(),
@@ -306,7 +317,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 			}
 			forward_c <- vnode
 			return
-		case pbListVnodesResp:
+		case PbListVnodesResp:
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
@@ -362,7 +373,7 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 			Dest: dest,
 		}
 		reqData, _ := proto.Marshal(req)
-		encoded := transport.Encode(pbGetPredecessor, reqData)
+		encoded := transport.Encode(PbGetPredecessor, reqData)
 		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ:GetPredecessor - error while sending request - %s", err)
@@ -382,11 +393,11 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 		}
 
 		switch decoded.Type {
-		case pbErr:
+		case PbErr:
 			pbMsg := decoded.TransportMsg.(PBProtoErr)
 			error_c <- fmt.Errorf("ZMQ::GetPredecessor - got error response - %s", pbMsg.GetError())
 			return
-		case pbProtoVnode:
+		case PbProtoVnode:
 			pbMsg := decoded.TransportMsg.(PBProtoVnode)
 			resp_c <- &Vnode{Host: pbMsg.GetHost(), Id: pbMsg.GetId()}
 			return
@@ -442,7 +453,7 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 			Vnode: self_pbvn,
 		}
 		reqData, _ := proto.Marshal(req)
-		encoded := transport.Encode(pbNotify, reqData)
+		encoded := transport.Encode(PbNotify, reqData)
 		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
 			error_c <- fmt.Errorf("ZMQ::Notify - error while sending request - %s", err)
@@ -462,11 +473,11 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 		}
 
 		switch decoded.Type {
-		case pbErr:
+		case PbErr:
 			pbMsg := decoded.TransportMsg.(PBProtoErr)
 			error_c <- fmt.Errorf("ZMQ::Notify - got error response - %s", pbMsg.GetError())
 			return
-		case pbListVnodesResp:
+		case PbListVnodesResp:
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
@@ -505,11 +516,11 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	req_sock.SetRcvtimeo(2 * time.Second)
 	req_sock.SetSndtimeo(2 * time.Second)
 
-	pbPingMsg := &PBProtoPing{
+	PbPingMsg := &PBProtoPing{
 		Version: proto.Int64(1),
 	}
-	pbPingData, _ := proto.Marshal(pbPingMsg)
-	encoded := transport.Encode(pbPing, pbPingData)
+	PbPingData, _ := proto.Marshal(PbPingMsg)
+	encoded := transport.Encode(PbPing, PbPingData)
 	_, err = req_sock.SendBytes(encoded, 0)
 	if err != nil {
 		return false, err

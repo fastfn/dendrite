@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	//"log"
+	"crypto/sha1"
 	"sort"
 	"time"
 )
@@ -26,7 +27,7 @@ func (e ErrHookUnknownType) Error() string {
 // 3rd party packages can register their hooks and leverage existing transport architecture and capabilities
 // ZMQTransport allows this extension
 type TransportHook interface {
-	// decode reverses the above process
+	// decodes bytes to ChordMsg
 	Decode([]byte) (*ChordMsg, error)
 }
 
@@ -104,6 +105,34 @@ func (r *Ring) Len() int {
 	return len(r.vnodes)
 }
 
+// Does a key lookup for up to N successors of a key
+func (r *Ring) Lookup(n int, key []byte) ([]*Vnode, error) {
+	// Ensure that n is sane
+	if n > r.config.NumSuccessors {
+		return nil, fmt.Errorf("Cannot ask for more successors than NumSuccessors!")
+	}
+
+	// Hash the key
+	hash := sha1.New()
+	hash.Write(key)
+	key_hash := hash.Sum(nil)
+
+	// Find the nearest local vnode
+	nearest := nearestVnodeToKey(r.vnodes, key_hash)
+
+	// Use the nearest node for the lookup
+	successors, err := r.transport.FindSuccessors(nearest, n, key_hash)
+	if err != nil {
+		return nil, err
+	}
+
+	// Trim the nil successors
+	for successors[len(successors)-1] == nil {
+		successors = successors[:len(successors)-1]
+	}
+	return successors, nil
+}
+
 // Initializes the vnodes with their local successors
 // Vnodes need to be sorted before this method is called
 func (r *Ring) setLocalSuccessors() {
@@ -144,6 +173,15 @@ func (r *Ring) schedule() {
 		r.vnodes[i].schedule()
 	}
 }
+
+func (r *Ring) MyVnodes() []*Vnode {
+	rv := make([]*Vnode, len(r.vnodes))
+	for idx, local_vn := range r.vnodes {
+		rv[idx] = &local_vn.Vnode
+	}
+	return rv
+}
+
 func CreateRing(config *Config, transport Transport) (*Ring, error) {
 	// initialize the ring and sort vnodes
 	r := &Ring{}

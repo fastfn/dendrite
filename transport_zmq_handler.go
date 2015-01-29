@@ -13,7 +13,7 @@ func (transport *ZMQTransport) zmq_ping_handler(request *ChordMsg, w chan *Chord
 	}
 	pbPong, _ := proto.Marshal(pbPongMsg)
 	pong := &ChordMsg{
-		Type: pbPing,
+		Type: PbPing,
 		Data: pbPong,
 	}
 	w <- pong
@@ -36,7 +36,7 @@ func (transport *ZMQTransport) zmq_listVnodes_handler(request *ChordMsg, w chan 
 		return
 	}
 	w <- &ChordMsg{
-		Type: pbListVnodesResp,
+		Type: PbListVnodesResp,
 		Data: pbdata,
 	}
 	return
@@ -82,7 +82,7 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 			return
 		}
 		w <- &ChordMsg{
-			Type: pbListVnodesResp,
+			Type: PbListVnodesResp,
 			Data: pbdata,
 		}
 		return
@@ -100,7 +100,7 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		return
 	}
 	w <- &ChordMsg{
-		Type: pbForward,
+		Type: PbForward,
 		Data: pbdata,
 	}
 }
@@ -138,7 +138,7 @@ func (transport *ZMQTransport) zmq_get_predecessor_handler(request *ChordMsg, w 
 	}
 
 	w <- &ChordMsg{
-		Type: pbProtoVnode,
+		Type: PbProtoVnode,
 		Data: pbdata,
 	}
 
@@ -186,7 +186,7 @@ func (transport *ZMQTransport) zmq_notify_handler(request *ChordMsg, w chan *Cho
 		return
 	}
 	w <- &ChordMsg{
-		Type: pbListVnodesResp,
+		Type: PbListVnodesResp,
 		Data: pbdata,
 	}
 }

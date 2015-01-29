@@ -30,10 +30,12 @@ type ZMQTransport struct {
 	ring              *Ring
 	table             map[string]*localHandler
 	clientTimeout     time.Duration
+	ClientTimeout     time.Duration
 	control_c         chan *workerComm
 	dealer_sock       *zmq.Socket
 	router_sock       *zmq.Socket
 	zmq_context       *zmq.Context
+	ZMQContext        *zmq.Context
 	workerIdleTimeout time.Duration
 	hooks             []TransportHook
 }
@@ -79,6 +81,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 	transport := &ZMQTransport{
 		lock:              new(sync.Mutex),
 		clientTimeout:     timeout,
+		ClientTimeout:     timeout,
 		minHandlers:       10,
 		maxHandlers:       1024,
 		incrHandlers:      10,
@@ -89,6 +92,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		dealer_sock:       dealer_sock,
 		router_sock:       router_sock,
 		zmq_context:       context,
+		ZMQContext:        context,
 		hooks:             make([]TransportHook, 0),
 	}
 
