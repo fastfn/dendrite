@@ -11,6 +11,8 @@ It is generated from these files:
 It has these top-level messages:
 	PBDTableGet
 	PBDTableGetResp
+	PBDTableSet
+	PBDTableSetResp
 */
 package dtable
 
@@ -68,6 +70,62 @@ func (m *PBDTableGetResp) GetValue() []byte {
 		return m.Value
 	}
 	return nil
+}
+
+type PBDTableSet struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
+	Val              []byte                 `protobuf:"bytes,3,req,name=val" json:"val,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableSet) Reset()         { *m = PBDTableSet{} }
+func (m *PBDTableSet) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSet) ProtoMessage()    {}
+
+func (m *PBDTableSet) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSet) GetKey() []byte {
+	if m != nil {
+		return m.Key
+	}
+	return nil
+}
+
+func (m *PBDTableSet) GetVal() []byte {
+	if m != nil {
+		return m.Val
+	}
+	return nil
+}
+
+type PBDTableSetResp struct {
+	Ok               *bool   `protobuf:"varint,1,req,name=ok" json:"ok,omitempty"`
+	Error            *string `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *PBDTableSetResp) Reset()         { *m = PBDTableSetResp{} }
+func (m *PBDTableSetResp) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSetResp) ProtoMessage()    {}
+
+func (m *PBDTableSetResp) GetOk() bool {
+	if m != nil && m.Ok != nil {
+		return *m.Ok
+	}
+	return false
+}
+
+func (m *PBDTableSetResp) GetError() string {
+	if m != nil && m.Error != nil {
+		return *m.Error
+	}
+	return ""
 }
 
 func init() {

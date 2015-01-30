@@ -14,6 +14,7 @@ const (
 	PbDtableGet  dendrite.MsgType = msgTypeStart + iota
 	PbDtableGetResp
 	PbDtableSet
+	PbDtableSetResp
 	PbDtableSetMulti
 )
 
@@ -48,7 +49,6 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 
 // Implement dendrite TransportHook
 func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
-	log.Println("Called hook decode")
 	data_len := len(data)
 	if data_len == 0 {
 		return nil, fmt.Errorf("data too short: %d", len(data))
@@ -77,6 +77,21 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 			return nil, fmt.Errorf("error decoding PBDTableGetResp message - %s", err)
 		}
 		cm.TransportMsg = dtableGetRespMsg
+	case PbDtableSet:
+		var dtableSetMsg PBDTableSet
+		err := proto.Unmarshal(cm.Data, &dtableSetMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableSet message - %s", err)
+		}
+		cm.TransportMsg = dtableSetMsg
+		cm.TransportHandler = dt.zmq_set_handler
+	case PbDtableSetResp:
+		var dtableSetRespMsg PBDTableSetResp
+		err := proto.Unmarshal(cm.Data, &dtableSetRespMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableSetResp message - %s", err)
+		}
+		cm.TransportMsg = dtableSetRespMsg
 	default:
 		// must return unknownType error
 		var rv dendrite.ErrHookUnknownType = "unknown request type"
@@ -132,6 +147,16 @@ func (dt *DTable) Set(key, val []byte) error {
 		}
 		return nil
 	}
-	// make remote call to successor
-	return nil
+	// todo: make remote call to successor
+	var last_err error
+	for _, succ := range succs {
+		err = dt.remoteSet(succ, key, val)
+		if err != nil {
+			last_err = err
+			log.Println("ZMQ::remoteSet error - ", err)
+			continue
+		}
+		return nil
+	}
+	return last_err
 }
