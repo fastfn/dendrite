@@ -160,3 +160,13 @@ func (dt *DTable) Set(key, val []byte) error {
 	}
 	return last_err
 }
+
+func (dt *DTable) DumpStr() {
+	fmt.Println("Dumping DTABLE")
+	for vn_id, vn_table := range dt.table {
+		fmt.Printf("\tvnode: %x\n", vn_id)
+		for key, val := range vn_table {
+			fmt.Printf("\t\t%s - %s\n", key, val.Val)
+		}
+	}
+}
