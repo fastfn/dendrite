@@ -79,12 +79,19 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	if v, ok := vn_table[key_str]; ok {
 		if v.timestamp.UnixNano() <= new_val.timestamp.UnixNano() {
 			// key exists but the record is older than new one
-			vn_table[key_str] = new_val
+			if new_val.Val == nil {
+				delete(vn_table, key_str)
+			} else {
+				vn_table[key_str] = new_val
+			}
 			setResp.Ok = proto.Bool(true)
 		} else {
 			setResp.Error = proto.String("new record too old to set for this key")
 		}
 	} else {
+		if new_val.Val == nil {
+			delete(vn_table, key_str)
+		}
 		vn_table[key_str] = new_val
 		setResp.Ok = proto.Bool(true)
 	}

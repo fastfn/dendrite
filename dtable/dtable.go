@@ -142,12 +142,17 @@ func (dt *DTable) Set(key, val []byte) error {
 	vn_table, ok := dt.table[vn_key_str]
 	if ok {
 		key_str := fmt.Sprintf("%x", key)
-		vn_table[key_str] = &value{
-			Val: val,
+		if val == nil {
+			delete(vn_table, key_str)
+		} else {
+			vn_table[key_str] = &value{
+				Val:       val,
+				timestamp: time.Now(),
+			}
 		}
 		return nil
 	}
-	// todo: make remote call to successor
+	// make remote call to successor
 	var last_err error
 	for _, succ := range succs {
 		err = dt.remoteSet(succ, key, val)
