@@ -102,7 +102,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 }
 
 // Get() returns value for a given key
-func (dt *DTable) Get(key []byte) ([]byte, error) {
+func (dt *DTable) get(key []byte) ([]byte, error) {
 	succs, err := dt.ring.Lookup(3, key)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (dt *DTable) Get(key []byte) ([]byte, error) {
 	return nil, last_err
 }
 
-func (dt *DTable) Set(key, val []byte) error {
+func (dt *DTable) set(key, val []byte) error {
 	succs, err := dt.ring.Lookup(3, key)
 	if err != nil {
 		return err
