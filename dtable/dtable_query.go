@@ -25,8 +25,9 @@ type Query struct {
 
 func (dt *DTable) NewQuery() *Query {
 	return &Query{
-		dt:    dt,
-		qType: -1,
+		dt:      dt,
+		qType:   -1,
+		minAcks: 1,
 	}
 }
 
@@ -53,7 +54,10 @@ func (q *Query) Exec() ([]byte, error) {
 	case qGet:
 		return q.dt.get(q.key)
 	case qSet:
-		return nil, q.dt.set(q.key, q.val)
+		wait := make(chan error)
+		go q.dt.set(q.key, q.val, q.minAcks, q.minAcks, 0, wait)
+		err := <-wait
+		return nil, err
 	default:
 		return nil, fmt.Errorf("unknown query")
 	}

@@ -132,15 +132,36 @@ func (dt *DTable) get(key []byte) ([]byte, error) {
 	return nil, last_err
 }
 
-func (dt *DTable) set(key, val []byte) error {
+// set() writes to table
+// writes: total writes to execute
+// wtl: writes to live. 0 means we're done
+// skip: how many remote successors to skip in loop
+// reports back on done ch
+func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
+	fmt.Println(writes, wtl, skip)
+	if wtl == 0 {
+		done <- nil
+		return
+	}
+
 	succs, err := dt.ring.Lookup(3, key)
 	if err != nil {
-		return err
+		done <- err
+		return
 	}
+
+	if len(succs) == skip {
+		// not enough remote successors found
+		done <- fmt.Errorf("not enough remote successors found for replicated write")
+		return
+	}
+
 	// check if successor exists in local dtable
-	vn_key_str := fmt.Sprintf("%x", succs[0].Id)
+	vn_key_str := fmt.Sprintf("%x", succs[skip].Id)
 	vn_table, ok := dt.table[vn_key_str]
-	if ok {
+
+	// only do local write if this is first hop
+	if ok && writes == wtl {
 		key_str := fmt.Sprintf("%x", key)
 		if val == nil {
 			delete(vn_table, key_str)
@@ -150,20 +171,31 @@ func (dt *DTable) set(key, val []byte) error {
 				timestamp: time.Now(),
 			}
 		}
-		return nil
+		wtl--
+		skip++
+		dt.set(key, val, writes, wtl, skip, done)
+		return
 	}
+	if ok {
+		skip++
+		dt.set(key, val, writes, wtl, skip, done)
+		return
+	}
+
 	// make remote call to successor
-	var last_err error
-	for _, succ := range succs {
+	for _, succ := range succs[skip:] {
 		err = dt.remoteSet(succ, key, val)
+		log.Println("Calling remote")
 		if err != nil {
-			last_err = err
 			log.Println("ZMQ::remoteSet error - ", err)
-			continue
+			done <- err
+			return
 		}
-		return nil
+		wtl--
+		skip++
+		dt.set(key, val, writes, wtl, skip, done)
+		return
 	}
-	return last_err
 }
 
 func (dt *DTable) DumpStr() {
