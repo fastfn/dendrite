@@ -14,25 +14,35 @@ const (
 )
 
 type Query struct {
-	dt       *DTable
-	qType    queryType
-	replicas int
-	minAcks  int
-	key      []byte
-	val      []byte
-	err      error
+	dt      *DTable
+	qType   queryType
+	writes  int
+	minAcks int
+	key     []byte
+	val     []byte
+	err     error
 }
 
 func (dt *DTable) NewQuery() *Query {
 	return &Query{
 		dt:      dt,
 		qType:   -1,
+		writes:  1,
 		minAcks: 1,
 	}
 }
 
+func (q *Query) Writes(n int) *Query {
+	if n >= 1 && n <= 3 {
+		q.writes = n
+	}
+	return q
+}
+
 func (q *Query) Consistency(n int) *Query {
-	q.minAcks = n
+	if n >= 1 && n <= 3 && n <= q.writes {
+		q.minAcks = n
+	}
 	return q
 }
 
