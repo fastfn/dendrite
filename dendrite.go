@@ -31,6 +31,13 @@ type TransportHook interface {
 	Decode([]byte) (*ChordMsg, error)
 }
 
+// DelegateHook is used to extend capabilities on events when ring structure changes
+// specifically, when new predecessor is set.
+// Vnode param is a Vnode representing new predecessor
+type DelegateHook interface {
+	Delegate(*Vnode, RingEventType)
+}
+
 type Transport interface {
 	// Gets a list of the vnodes on the box
 	ListVnodes(string) ([]*Vnode, error)
@@ -90,6 +97,7 @@ type Ring struct {
 	vnodes         []*localVnode
 	shutdown       chan bool
 	Stabilizations int
+	delegateHooks  []DelegateHook
 }
 
 // implement sort.Interface (Len(), Less() and Swap())
@@ -158,6 +166,7 @@ func (r *Ring) init(config *Config, transport Transport) {
 	r.transport = InitLocalTransport(transport)
 	r.vnodes = make([]*localVnode, config.NumVnodes)
 	r.shutdown = make(chan bool)
+	r.delegateHooks = make([]DelegateHook, 0)
 	// initialize vnodes
 	for i := 0; i < config.NumVnodes; i++ {
 		vn := &localVnode{}
@@ -240,4 +249,29 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 		vn.stabilize()
 	}
 	return r, nil
+}
+
+func (r *Ring) RegisterDelegateHook(dh DelegateHook) {
+	r.delegateHooks = append(r.delegateHooks, dh)
+}
+
+type RingEventType int
+
+var (
+	EvNodeJoined RingEventType = 1
+	EvNodeLeft   RingEventType = 2
+)
+
+func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
+	// we have new predecessor, lets figure out what happened
+	var ev RingEventType
+	if between(old_pred.Id, localVn.Id, new_pred.Id, false) {
+		ev = EvNodeJoined
+	} else {
+		ev = EvNodeLeft
+	}
+	// call registered delegate hooks.. if any
+	for _, dh := range r.delegateHooks {
+		dh.Delegate(new_pred, ev)
+	}
 }

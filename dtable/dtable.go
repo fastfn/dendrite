@@ -44,6 +44,7 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 		dt.table[vn_key_str] = node_kv
 	}
 	transport.RegisterHook(dt)
+	ring.RegisterDelegateHook(dt)
 	return dt
 }
 
@@ -198,71 +199,6 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 	}
 }
 
-// setOnReplicas() finds replicas to write to
-// writes: total writes to execute
-// wtl: writes to live. 0 means we're done
-// skip: how many remote successors to skip in loop
-// reports back on done ch
-func (dt *DTable) setOnReplicas(key, val []byte, writes, wtl, skip int, done chan error) {
-	fmt.Println(writes, wtl, skip)
-	if wtl == 0 {
-		done <- nil
-		return
-	}
-
-	succs, err := dt.ring.Lookup(3, key)
-	if err != nil {
-		done <- err
-		return
-	}
-
-	if len(succs) == skip {
-		// not enough remote successors found
-		done <- fmt.Errorf("not enough remote successors found for replicated write")
-		return
-	}
-
-	// check if successor exists in local dtable
-	vn_key_str := fmt.Sprintf("%x", succs[skip].Id)
-	vn_table, ok := dt.table[vn_key_str]
-
-	// only do local write if this is first hop
-	if ok && writes == wtl {
-		key_str := fmt.Sprintf("%x", key)
-		if val == nil {
-			delete(vn_table, key_str)
-		} else {
-			vn_table[key_str] = &value{
-				Val:       val,
-				timestamp: time.Now(),
-			}
-		}
-		wtl--
-		skip++
-		dt.set(key, val, writes, wtl, skip, done)
-		return
-	}
-	if ok {
-		skip++
-		dt.set(key, val, writes, wtl, skip, done)
-		return
-	}
-
-	// make remote call to successor
-	for _, succ := range succs[skip:] {
-		err = dt.remoteSet(succ, key, val)
-		log.Println("Calling remote")
-		if err != nil {
-			log.Println("ZMQ::remoteSet error - ", err)
-			done <- err
-			return
-		}
-		wtl--
-		skip++
-		dt.set(key, val, writes, wtl, skip, done)
-		return
-	}
-}
 func (dt *DTable) DumpStr() {
 	fmt.Println("Dumping DTABLE")
 	for vn_id, vn_table := range dt.table {
@@ -271,4 +207,10 @@ func (dt *DTable) DumpStr() {
 			fmt.Printf("\t\t%s - %s\n", key, val.Val)
 		}
 	}
+}
+
+// if node left, maintain consistency by finding local replicas and push them one step further
+// if node joined, find all keys in local table that are < new_pred, copy them to new_pred and strip last replica
+func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType) {
+
 }

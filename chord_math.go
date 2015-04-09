@@ -25,7 +25,8 @@ func randStabilize(conf *Config) time.Duration {
 	return time.Duration((r * float64(max-min)) + float64(min))
 }
 
-// Checks if a key is STRICTLY between two ID's exclusively
+// Checks if a key is between two keys (id1 > key > id2)
+// rincl if true, adds variation (id1 > key >= id2)
 func between(id1, id2, key []byte, rincl bool) bool {
 	// Check for ring wrap around
 	if bytes.Compare(id1, id2) == 1 {

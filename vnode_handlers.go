@@ -64,6 +64,7 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 				conf.Delegate.NewPredecessor(&vn.Vnode, maybe_pred, old)
 			})
 		*/
+		vn.ring.Delegate(&vn.Vnode, vn.predecessor, maybe_pred)
 		vn.predecessor = maybe_pred
 	}
 
