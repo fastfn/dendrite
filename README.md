@@ -8,7 +8,5 @@ Features:
 
 Todo:
  - write more/better documentation
- - dendrite: implement delegate hooks for node leave event
  - dtable: use delegate hooks to copy data to another node
- - dtable: implement replication and data failover
 
