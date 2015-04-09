@@ -33,9 +33,10 @@ type TransportHook interface {
 
 // DelegateHook is used to extend capabilities on events when ring structure changes
 // specifically, when new predecessor is set.
-// Vnode param is a Vnode representing new predecessor
+// first Vnode param is local Vnode that handles delegation
+// second Vnode param is a Vnode representing new predecessor
 type DelegateHook interface {
-	Delegate(*Vnode, RingEventType)
+	Delegate(*Vnode, *Vnode, RingEventType)
 }
 
 type Transport interface {
@@ -272,6 +273,6 @@ func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
 	}
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
-		dh.Delegate(new_pred, ev)
+		dh.Delegate(localVn, new_pred, ev)
 	}
 }
