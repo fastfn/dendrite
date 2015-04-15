@@ -214,6 +214,7 @@ func (dt *DTable) DumpStr() {
 // if node left, maintain consistency by finding local replicas and push them one step further if possible
 // if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
 func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType) {
+	time.Sleep(dt.ring.MaxStabilize())
 	log.Printf("Called delegate on %X\n", localVn.Id)
 	// find my remote successors
 	replicas := dt.findReplicas(localVn)
@@ -249,7 +250,6 @@ func (dt *DTable) findReplicas(vn *dendrite.Vnode) []*dendrite.Vnode {
 		}
 		for _, succ := range succs {
 			if len(remote_succs) == replicas || succ.Host == seen {
-				log.Println("OOOPS, returning", len(remote_succs), succ.Host == seen)
 				return remote_succs
 			}
 			if succ.Host == vn.Host {

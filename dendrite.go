@@ -120,6 +120,10 @@ func (r *Ring) Replicas() int {
 	return r.config.Replicas
 }
 
+func (r *Ring) MaxStabilize() time.Duration {
+	return r.config.StabilizeMax
+}
+
 // Does a key lookup for up to N successors of a key
 func (r *Ring) Lookup(n int, key []byte) ([]*Vnode, error) {
 	// Ensure that n is sane
