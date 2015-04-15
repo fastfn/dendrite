@@ -77,6 +77,7 @@ type Config struct {
 	StabilizeMin  time.Duration
 	StabilizeMax  time.Duration
 	NumSuccessors int // number of successor to keep in self log
+	Replicas      int // number of replicas to keep by default
 }
 
 func DefaultConfig(hostname string) *Config {
@@ -89,6 +90,7 @@ func DefaultConfig(hostname string) *Config {
 		StabilizeMin:  1 * time.Second,
 		StabilizeMax:  3 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
+		Replicas:      3,
 	}
 }
 
@@ -112,6 +114,10 @@ func (r *Ring) Swap(i, j int) {
 
 func (r *Ring) Len() int {
 	return len(r.vnodes)
+}
+
+func (r *Ring) Replicas() int {
+	return r.config.Replicas
 }
 
 // Does a key lookup for up to N successors of a key
@@ -266,13 +272,13 @@ var (
 func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
 	// we have new predecessor, lets figure out what happened
 	var ev RingEventType
-	if between(old_pred.Id, localVn.Id, new_pred.Id, false) {
+	if old_pred == nil || between(old_pred.Id, localVn.Id, new_pred.Id, false) {
 		ev = EvNodeJoined
 	} else {
 		ev = EvNodeLeft
 	}
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
-		dh.Delegate(localVn, new_pred, ev)
+		go dh.Delegate(localVn, new_pred, ev)
 	}
 }

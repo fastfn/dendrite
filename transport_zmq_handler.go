@@ -4,7 +4,7 @@ import (
 	//"bytes"
 	//"fmt"
 	"github.com/golang/protobuf/proto"
-	//"log"
+	//	"log"
 )
 
 func (transport *ZMQTransport) zmq_ping_handler(request *ChordMsg, w chan *ChordMsg) {
@@ -56,7 +56,6 @@ func (transport *ZMQTransport) zmq_find_successors_handler(request *ChordMsg, w 
 		w <- errorMsg
 		return
 	}
-
 	succs, forward_vn, err := local_vn.FindSuccessors(key, int(pbMsg.GetLimit()))
 	if err != nil {
 		errorMsg := transport.newErrorMsg("ZMQ::FindSuccessorsHandler - " + err.Error())

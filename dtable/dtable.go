@@ -21,6 +21,7 @@ const (
 type value struct {
 	Val       []byte
 	timestamp time.Time
+	replicas  int
 }
 type kvMap map[string]*value
 
@@ -170,6 +171,7 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 			vn_table[key_str] = &value{
 				Val:       val,
 				timestamp: time.Now(),
+				replicas:  writes,
 			}
 		}
 		wtl--
@@ -209,8 +211,56 @@ func (dt *DTable) DumpStr() {
 	}
 }
 
-// if node left, maintain consistency by finding local replicas and push them one step further
-// if node joined, find all keys in local table that are < new_pred, copy them to new_pred and strip last replica
+// if node left, maintain consistency by finding local replicas and push them one step further if possible
+// if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
 func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType) {
+	log.Printf("Called delegate on %X\n", localVn.Id)
+	// find my remote successors
+	replicas := dt.findReplicas(localVn)
+	if replicas == nil {
+		return
+	}
+
+	log.Println("Done delegating:")
+	for _, r := range replicas {
+		log.Printf("\t - %s\n", r.String())
+	}
+}
+
+func (dt *DTable) findReplicas(vn *dendrite.Vnode) []*dendrite.Vnode {
+	loop_vn := vn
+	replicas := dt.ring.Replicas()
+	remote_succs := make([]*dendrite.Vnode, 0)
+	var seen string
+	count := 0
+
+	for {
+		if len(remote_succs) > 0 {
+			loop_vn = remote_succs[len(remote_succs)-1]
+		}
+		if len(remote_succs) == 0 && count > 0 {
+			break
+		}
+		count += 1
+		succs, err := dt.transport.FindSuccessors(loop_vn, replicas, loop_vn.Id)
+		if err != nil {
+			log.Println("DTable::Delegate - error while finding replicas:", err)
+			return nil
+		}
+		for _, succ := range succs {
+			if len(remote_succs) == replicas || succ.Host == seen {
+				log.Println("OOOPS, returning", len(remote_succs), succ.Host == seen)
+				return remote_succs
+			}
+			if succ.Host == vn.Host {
+				continue
+			}
+			if len(remote_succs) == 0 {
+				seen = succ.Host
+			}
+			remote_succs = append(remote_succs, succ)
+		}
+	}
+	return remote_succs
 
 }

@@ -65,13 +65,13 @@ func (vn *localVnode) stabilize() {
 	//log.Printf("NotifySucc returned for %X\n", vn.Id)
 
 	if err := vn.fixFingerTable(); err != nil {
-		log.Println("[stabilize] Error fixing finger table, last:", vn.last_finger, err)
+		log.Println("[stabilize] Error fixing finger table, last:", time.Since(start), vn.last_finger, err)
 	}
 
 	if err := vn.checkPredecessor(); err != nil {
 		log.Printf("[stabilize] Predecessor failed for %X - %s\n", vn.Id, err)
 	}
-	log.Println("[stabilize] completed in", time.Since(start))
+	//log.Println("[stabilize] completed in", time.Since(start))
 }
 
 // Find closest preceeding finger node
