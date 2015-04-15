@@ -170,6 +170,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 func (vn *localVnode) notifySuccessor() error {
 	// Notify successor
 	succ := vn.successors[0]
+	//log.Printf("Notifying successor of us: %X -> %X\n", vn.Id, succ.Id)
 	succ_list, err := vn.ring.transport.Notify(succ, &vn.Vnode)
 	if err != nil {
 		return err

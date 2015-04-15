@@ -243,8 +243,14 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 			if succs == nil || len(succs) == 0 {
 				return nil, fmt.Errorf("Failed to find successors for vnode, got empty list")
 			}
-			for idx, s := range succs {
-				vn.successors[idx] = s
+			suc_pos := 0
+			for _, s := range succs {
+				// if we're rejoining.. s could be us
+				if bytes.Compare(vn.Id, s.Id) == 0 {
+					continue
+				}
+				vn.successors[suc_pos] = s
+				suc_pos += 1
 			}
 			resolved = true
 		}

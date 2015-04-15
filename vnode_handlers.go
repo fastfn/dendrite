@@ -3,7 +3,7 @@ package dendrite
 import (
 	"bytes"
 	//"fmt"
-	"log"
+	//"log"
 )
 
 // handles vnode operations
@@ -81,7 +81,7 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 			})
 		*/
 		vn.ring.Delegate(&vn.Vnode, vn.predecessor, maybe_pred)
-		log.Printf("Setting new predecessor for %X - %X\n", vn.Id, maybe_pred.Id)
+		//log.Printf("Setting new predecessor for %X - %X\n", vn.Id, maybe_pred.Id)
 		vn.predecessor = maybe_pred
 	}
 
