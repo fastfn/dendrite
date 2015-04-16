@@ -257,12 +257,14 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 					continue
 				}
 
-				// remove the key from last replica
+				// remove the key from last replica unless last replica is our new predecessor
 				if len(replicas) == 0 {
 					continue
 				}
 				last_replica = replicas[len(replicas)-1]
-
+				if last_replica.Host == new_pred.Host {
+					continue
+				}
 				err = dt.remoteSet(last_replica, key, nil)
 				if err != nil {
 					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
