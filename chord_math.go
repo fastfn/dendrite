@@ -3,6 +3,7 @@ package dendrite
 import (
 	"bytes"
 	//"log"
+	"crypto/sha1"
 	"math/big"
 	"math/rand"
 	"time"
@@ -45,6 +46,10 @@ func between(id1, id2, key []byte, rincl bool) bool {
 	}
 	return bytes.Compare(id1, key) == -1 &&
 		bytes.Compare(id2, key) == 1
+}
+
+func Between(id1, id2, key []byte, rincl bool) bool {
+	return between(id1, id2, key, rincl)
 }
 
 // Returns the vnode nearest to a key
@@ -110,4 +115,10 @@ func distance(a, b []byte) *big.Int {
 		return (&dist).Add(&dist, &b_int)
 	}
 
+}
+
+func HashKey(key []byte) []byte {
+	hash := sha1.New()
+	hash.Write(key)
+	return hash.Sum(nil)
 }

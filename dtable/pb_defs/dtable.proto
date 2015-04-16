@@ -14,7 +14,7 @@ message PBDTableGetResp {
 message PBDTableSet {
 	required dendrite.PBProtoVnode dest = 1;
 	required bytes key = 2;
-	required bytes val = 3;
+	optional bytes val = 3;
 }
 
 message PBDTableSetResp {

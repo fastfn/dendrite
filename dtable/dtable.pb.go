@@ -75,7 +75,7 @@ func (m *PBDTableGetResp) GetValue() []byte {
 type PBDTableSet struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
 	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	Val              []byte                 `protobuf:"bytes,3,req,name=val" json:"val,omitempty"`
+	Val              []byte                 `protobuf:"bytes,3,opt,name=val" json:"val,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 

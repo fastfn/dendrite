@@ -1,6 +1,7 @@
 package dtable
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
@@ -83,7 +84,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		var dtableSetMsg PBDTableSet
 		err := proto.Unmarshal(cm.Data, &dtableSetMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBDTableSet message - %s", err)
+			return nil, fmt.Errorf("error decoding PBDTableSet message - %s - %+v", err, cm.Data)
 		}
 		cm.TransportMsg = dtableSetMsg
 		cm.TransportHandler = dt.zmq_set_handler
@@ -113,7 +114,7 @@ func (dt *DTable) get(key []byte) ([]byte, error) {
 	vn_key_str := fmt.Sprintf("%x", succs[0].Id)
 	vn_table, ok := dt.table[vn_key_str]
 	if ok {
-		key_str := fmt.Sprintf("%x", key)
+		key_str := fmt.Sprintf("%x", dendrite.HashKey(key))
 		if v, exists := vn_table[key_str]; exists {
 			return v.Val, nil
 		} else {
@@ -164,7 +165,7 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 
 	// only do local write if this is first hop
 	if ok && writes == wtl {
-		key_str := fmt.Sprintf("%x", key)
+		key_str := fmt.Sprintf("%x", dendrite.HashKey(key))
 		if val == nil {
 			delete(vn_table, key_str)
 		} else {
@@ -188,7 +189,6 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 	// make remote call to successor
 	for _, succ := range succs[skip:] {
 		err = dt.remoteSet(succ, key, val)
-		log.Println("Calling remote")
 		if err != nil {
 			log.Println("ZMQ::remoteSet error - ", err)
 			done <- err
@@ -204,7 +204,7 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 func (dt *DTable) DumpStr() {
 	fmt.Println("Dumping DTABLE")
 	for vn_id, vn_table := range dt.table {
-		fmt.Printf("\tvnode: %x\n", vn_id)
+		fmt.Printf("\tvnode: %s\n", vn_id)
 		for key, val := range vn_table {
 			fmt.Printf("\t\t%s - %s\n", key, val.Val)
 		}
@@ -218,7 +218,55 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 	log.Printf("Called delegate on %X\n", localVn.Id)
 	// find my remote successors
 	replicas := dt.findReplicas(localVn)
-	if replicas == nil {
+	if replicas == nil || len(replicas) == 0 {
+		log.Println("returning from delegate", len(replicas))
+		return
+	}
+
+	last_replica := replicas[len(replicas)-1]
+	if last_replica == nil {
+		log.Println("returning because last replica is nil")
+	}
+	vn_table, _ := dt.table[localVn.String()]
+
+	switch changeType {
+	case dendrite.EvNodeLeft:
+		// make sure that enough available replica nodes are found
+		// if not, don't do anything
+		if len(replicas) != dt.ring.Replicas() {
+			//return
+		}
+
+		for key_str, val := range vn_table {
+			key, _ := hex.DecodeString(key_str)
+			err := dt.remoteSet(last_replica, key, val.Val)
+			if err != nil {
+				log.Println("Dendrite::Delegate - failed to replicate key:", err)
+			}
+		}
+	case dendrite.EvNodeJoined:
+		log.Println("JUHUUUUUU NODE JOINED")
+		// find all local keys that are < new predecessor
+		for key_str, val := range vn_table {
+			log.Println("delegate handling key", key_str)
+			key, _ := hex.DecodeString(key_str)
+			if dendrite.Between(key, localVn.Id, new_pred.Id, true) {
+				// copy the key to new predecessor
+				err := dt.remoteSet(new_pred, key, val.Val)
+				if err != nil {
+					log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
+					continue
+				}
+				log.Println("first remoteSet completed", last_replica.String())
+				// remove the key from last replica
+				err = dt.remoteSet(last_replica, key, nil)
+				if err != nil {
+					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
+				}
+				log.Println("last remoteSet completed")
+			}
+		}
+	default:
 		return
 	}
 

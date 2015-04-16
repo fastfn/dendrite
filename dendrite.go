@@ -289,6 +289,7 @@ func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
 	}
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
+		fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
 		go dh.Delegate(localVn, new_pred, ev)
 	}
 }
