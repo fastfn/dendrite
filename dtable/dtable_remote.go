@@ -37,7 +37,7 @@ func (dt *DTable) remoteGet(remote *dendrite.Vnode, key []byte) ([]byte, bool, e
 		}
 		req := &PBDTableGet{
 			Dest: dest,
-			Key:  dendrite.HashKey(key),
+			Key:  key,
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -121,7 +121,7 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key, val []byte) error {
 		}
 		req := &PBDTableSet{
 			Dest: dest,
-			Key:  dendrite.HashKey(key),
+			Key:  key,
 			Val:  val,
 		}
 

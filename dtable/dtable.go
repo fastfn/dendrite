@@ -188,7 +188,7 @@ func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
 
 	// make remote call to successor
 	for _, succ := range succs[skip:] {
-		err = dt.remoteSet(succ, key, val)
+		err = dt.remoteSet(succ, dendrite.HashKey(key), val)
 		if err != nil {
 			log.Println("ZMQ::remoteSet error - ", err)
 			done <- err
@@ -217,16 +217,13 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 	time.Sleep(dt.ring.MaxStabilize())
 	log.Printf("Called delegate on %X\n", localVn.Id)
 	// find my remote successors
-	replicas := dt.findReplicas(localVn)
-	if replicas == nil || len(replicas) == 0 {
-		log.Println("returning from delegate", len(replicas))
+	replicas := dt.findReplicas(localVn, new_pred)
+	if replicas == nil {
+		log.Println("returning from delegate - nil replicas")
 		return
 	}
+	var last_replica *dendrite.Vnode
 
-	last_replica := replicas[len(replicas)-1]
-	if last_replica == nil {
-		log.Println("returning because last replica is nil")
-	}
 	vn_table, _ := dt.table[localVn.String()]
 
 	switch changeType {
@@ -236,7 +233,10 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 		if len(replicas) != dt.ring.Replicas() {
 			//return
 		}
-
+		last_replica = replicas[len(replicas)-1]
+		if last_replica == nil {
+			log.Println("returning because last replica is nil")
+		}
 		for key_str, val := range vn_table {
 			key, _ := hex.DecodeString(key_str)
 			err := dt.remoteSet(last_replica, key, val.Val)
@@ -245,7 +245,6 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 			}
 		}
 	case dendrite.EvNodeJoined:
-		log.Println("JUHUUUUUU NODE JOINED")
 		// find all local keys that are < new predecessor
 		for key_str, val := range vn_table {
 			log.Println("delegate handling key", key_str)
@@ -257,13 +256,17 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 					log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
 					continue
 				}
-				log.Println("first remoteSet completed", last_replica.String())
+
 				// remove the key from last replica
+				if len(replicas) == 0 {
+					continue
+				}
+				last_replica = replicas[len(replicas)-1]
+
 				err = dt.remoteSet(last_replica, key, nil)
 				if err != nil {
 					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
 				}
-				log.Println("last remoteSet completed")
 			}
 		}
 	default:
@@ -276,7 +279,7 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 	}
 }
 
-func (dt *DTable) findReplicas(vn *dendrite.Vnode) []*dendrite.Vnode {
+func (dt *DTable) findReplicas(vn, skip_vn *dendrite.Vnode) []*dendrite.Vnode {
 	loop_vn := vn
 	replicas := dt.ring.Replicas()
 	remote_succs := make([]*dendrite.Vnode, 0)
