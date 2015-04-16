@@ -218,10 +218,6 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 	log.Printf("Called delegate on %X\n", localVn.Id)
 	// find my remote successors
 	replicas := dt.findReplicas(localVn, new_pred)
-	if replicas == nil {
-		log.Println("returning from delegate - nil replicas")
-		return
-	}
 	var last_replica *dendrite.Vnode
 
 	vn_table, _ := dt.table[localVn.String()]
@@ -233,9 +229,13 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 		if len(replicas) != dt.ring.Replicas() {
 			//return
 		}
+
+		if len(replicas) == 0 {
+			return
+		}
 		last_replica = replicas[len(replicas)-1]
 		if last_replica == nil {
-			log.Println("returning because last replica is nil")
+			return
 		}
 		for key_str, val := range vn_table {
 			key, _ := hex.DecodeString(key_str)
