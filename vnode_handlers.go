@@ -3,7 +3,7 @@ package dendrite
 import (
 	"bytes"
 	//"fmt"
-	//"log"
+	"log"
 )
 
 // handles vnode operations
@@ -25,7 +25,7 @@ func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, e
 	// check if we have direct successor for requested key
 	succs := make([]*Vnode, 0)
 	max_vnodes := min(limit, len(vn.successors))
-	if between(vn.Id, vn.successors[0].Id, key, true) {
+	if bytes.Compare(key, vn.Id) == 0 || between(vn.Id, vn.successors[0].Id, key, true) {
 		for i := 0; i < max_vnodes; i++ {
 			if vn.successors[i] == nil {
 				continue
@@ -72,16 +72,8 @@ func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 	// Check if we should update our predecessor
 	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
-		// Inform the delegate
-		//conf := vn.ring.config
-		//old := vn.predecessor
-		/*
-			vn.ring.invokeDelegate(func() {
-				conf.Delegate.NewPredecessor(&vn.Vnode, maybe_pred, old)
-			})
-		*/
-		vn.ring.Delegate(&vn.Vnode, vn.predecessor, maybe_pred)
-		//log.Printf("Setting new predecessor for %X - %X\n", vn.Id, maybe_pred.Id)
+		log.Printf("Setting new predecessor for %X - %X\n", vn.Id, maybe_pred.Id)
+		go vn.ring.Delegate(&vn.Vnode, vn.predecessor, maybe_pred)
 		vn.predecessor = maybe_pred
 	}
 

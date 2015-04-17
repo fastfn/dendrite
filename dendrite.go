@@ -186,6 +186,28 @@ func (r *Ring) init(config *Config, transport Transport) {
 		vn.init(i)
 	}
 	sort.Sort(r)
+	/*go func() {
+		for {
+			for _, vnode := range r.vnodes {
+				var pred []byte
+				if vnode.predecessor == nil {
+					pred = nil
+				} else {
+					pred = vnode.predecessor.Id
+				}
+
+				fmt.Printf("Vnode: %X -> pred: %X -> succ: ", vnode.Id, pred)
+				for _, suc := range vnode.successors {
+					if suc == nil {
+						break
+					}
+					fmt.Printf("%X, ", suc.Id)
+				}
+				fmt.Printf("\n")
+			}
+			time.Sleep(15 * time.Second)
+		}
+	}()*/
 }
 
 func (r *Ring) schedule() {
@@ -230,29 +252,39 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 	r.init(config, transport)
 
 	// for each vnode, get the new list of live successors from remote
+
 	for _, vn := range r.vnodes {
 		resolved := false
 		var last_error error
 		// go through each host until we get successor list from one of them
+	L:
 		for _, remote_host := range hosts {
+			suc_pos := 0
 			succs, err := transport.FindSuccessors(remote_host, config.NumSuccessors, vn.Id)
 			if err != nil {
 				last_error = err
-				continue
+				continue L
 			}
 			if succs == nil || len(succs) == 0 {
-				return nil, fmt.Errorf("Failed to find successors for vnode, got empty list")
+				//return nil, fmt.Errorf("Failed to find successors for vnode, got empty list")
+				last_error = fmt.Errorf("Failed to find successors for vnode, got empty list")
+				continue L
 			}
-			suc_pos := 0
+		SL:
 			for _, s := range succs {
-				// if we're rejoining.. s could be us
+				// if we're rejoining before failure is detected.. s could be us
 				if bytes.Compare(vn.Id, s.Id) == 0 {
-					continue
+					continue SL
 				}
+				if s == nil {
+					break SL
+				}
+				//fmt.Printf("Trying position %d with len %d/%d vn.Id: %X, succ.Id: %X\n", suc_pos, len(vn.successors), len(succs), vn.Id, s.Id)
 				vn.successors[suc_pos] = s
 				suc_pos += 1
 			}
 			resolved = true
+			break L
 		}
 		if !resolved {
 			return nil, fmt.Errorf("Exhausted all remote vnodes while trying to get the list of successors. Last error: %s", last_error.Error())
@@ -289,7 +321,7 @@ func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
 	}
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
-		fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
-		go dh.Delegate(localVn, new_pred, ev)
+		//fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
+		dh.Delegate(localVn, new_pred, ev)
 	}
 }

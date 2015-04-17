@@ -213,9 +213,9 @@ func (dt *DTable) DumpStr() {
 
 // if node left, maintain consistency by finding local replicas and push them one step further if possible
 // if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
+//                 for other keys, just copy them to all replicas as we might be in deficite
 func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType) {
 	time.Sleep(dt.ring.MaxStabilize())
-	log.Printf("Called delegate on %X\n", localVn.Id)
 	// find my remote successors
 	replicas := dt.findReplicas(localVn, new_pred)
 	var last_replica *dendrite.Vnode
@@ -248,15 +248,18 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 		// find all local keys that are < new predecessor
 		for key_str, val := range vn_table {
 			log.Println("delegate handling key", key_str)
+			for _, repl := range replicas {
+				log.Printf("\t - replica: %X\n", repl.Id)
+			}
 			key, _ := hex.DecodeString(key_str)
 			if dendrite.Between(key, localVn.Id, new_pred.Id, true) {
+				log.Printf("  - delivering to %X, got true\n", new_pred.Id)
 				// copy the key to new predecessor
 				err := dt.remoteSet(new_pred, key, val.Val)
 				if err != nil {
 					log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
 					continue
 				}
-
 				// remove the key from last replica unless last replica is our new predecessor
 				if len(replicas) == 0 {
 					continue
@@ -269,51 +272,46 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 				if err != nil {
 					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
 				}
+			} else {
+				for _, replica := range replicas {
+					err := dt.remoteSet(replica, key, val.Val)
+					if err != nil {
+						log.Println("Dendrite::Delegate -- failed to propagate key to replica:", err)
+					}
+				}
 			}
 		}
 	default:
 		return
 	}
 
-	log.Println("Done delegating:")
-	for _, r := range replicas {
-		log.Printf("\t - %s\n", r.String())
-	}
+	// for _, r := range replicas {
+	// 	//log.Printf("\t - %s\n", r.String())
+	// }
 }
 
 func (dt *DTable) findReplicas(vn, skip_vn *dendrite.Vnode) []*dendrite.Vnode {
-	loop_vn := vn
 	replicas := dt.ring.Replicas()
 	remote_succs := make([]*dendrite.Vnode, 0)
-	var seen string
-	count := 0
+	succs, err := dt.transport.FindSuccessors(vn, replicas, vn.Id)
+	hosts_map := make(map[string]bool)
 
-	for {
-		if len(remote_succs) > 0 {
-			loop_vn = remote_succs[len(remote_succs)-1]
+	if err != nil {
+		log.Println("DTable::Delegate - error while finding replicas:", err)
+		return nil
+	}
+	for _, succ := range succs {
+		fmt.Printf("findReplicas: %X, -> %X\n", vn.Id, succ.Id)
+		if succ.Host == vn.Host {
+			continue
 		}
-		if len(remote_succs) == 0 && count > 0 {
-			break
-		}
-		count += 1
-		succs, err := dt.transport.FindSuccessors(loop_vn, replicas, loop_vn.Id)
-		if err != nil {
-			log.Println("DTable::Delegate - error while finding replicas:", err)
-			return nil
-		}
-		for _, succ := range succs {
-			if len(remote_succs) == replicas || succ.Host == seen {
+		if _, ok := hosts_map[succ.Host]; !ok {
+			hosts_map[succ.Host] = true
+			remote_succs = append(remote_succs, succ)
+			if len(remote_succs) == replicas {
 				return remote_succs
 			}
-			if succ.Host == vn.Host {
-				continue
-			}
-			if len(remote_succs) == 0 {
-				seen = succ.Host
-			}
-			remote_succs = append(remote_succs, succ)
 		}
 	}
 	return remote_succs
-
 }

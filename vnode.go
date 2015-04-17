@@ -126,7 +126,7 @@ func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 func (vn *localVnode) checkNewSuccessor() error {
 	for {
 		if vn.successors[0] == nil {
-			panic("Node has no more successors :(")
+			log.Fatal("Node has no more successors :(")
 		}
 		// Ask our successor for it's predecessor
 		maybe_suc, err := vn.ring.transport.GetPredecessor(vn.successors[0])
@@ -141,7 +141,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 			if alive {
 				copy(vn.successors[1:], vn.successors[0:len(vn.successors)-1])
 				vn.successors[0] = maybe_suc
-				log.Println("[stabilize] new successor set")
+				log.Printf("[stabilize] new successor set: %X -> %X\n", vn.Id, maybe_suc.Id)
 			} else {
 				// skip this one, it's not alive
 				//log.Println("[stabilize] new successor found, but it's not alive")
@@ -191,6 +191,7 @@ func (vn *localVnode) notifySuccessor() error {
 		if s == nil || s.String() == vn.String() {
 			break
 		}
+		//fmt.Printf("Updating successor from notifySuccessor(), %X -> %X\n", vn.Id, s.Id)
 		vn.successors[idx+1] = s
 	}
 	return nil
