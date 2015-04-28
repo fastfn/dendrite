@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	PbDtableGet      dendrite.MsgType = 20
-	PbDtableGetResp  dendrite.MsgType = 21
-	PbDtableSet      dendrite.MsgType = 22
-	PbDtableSetResp  dendrite.MsgType = 23
-	PbDtableSetMulti dendrite.MsgType = 24
+	PbDtableGet      dendrite.MsgType = 0x20
+	PbDtableGetResp  dendrite.MsgType = 0x21
+	PbDtableSet      dendrite.MsgType = 0x22
+	PbDtableSetResp  dendrite.MsgType = 0x23
+	PbDtableSetMulti dendrite.MsgType = 0x24
 )
 
 type value struct {
