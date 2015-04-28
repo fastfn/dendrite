@@ -33,7 +33,7 @@ func (dt *DTable) NewQuery() *Query {
 }
 
 func (q *Query) Writes(n int) *Query {
-	if n >= 1 && n <= 3 {
+	if n >= 1 && n <= q.dt.ring.Replicas() {
 		q.writes = n
 	}
 	return q

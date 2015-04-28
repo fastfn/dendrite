@@ -16,6 +16,9 @@ func min(a, b int) int {
 		return b
 	}
 }
+func Min(a, b int) int {
+	return min(a, b)
+}
 
 // Generates a random stabilization time
 func randStabilize(conf *Config) time.Duration {

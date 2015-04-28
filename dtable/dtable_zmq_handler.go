@@ -91,8 +91,9 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	} else {
 		if new_val.Val == nil {
 			delete(vn_table, key_str)
+		} else {
+			vn_table[key_str] = new_val
 		}
-		vn_table[key_str] = new_val
 		setResp.Ok = proto.Bool(true)
 	}
 

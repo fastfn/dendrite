@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -22,13 +23,15 @@ func (vn *Vnode) String() string {
 // local Vnode
 type localVnode struct {
 	Vnode
-	ring        *Ring
-	successors  []*Vnode // "backlog" of known successors
-	finger      []*Vnode
-	last_finger int
-	predecessor *Vnode
-	stabilized  time.Time
-	timer       *time.Timer
+	ring            *Ring
+	successors      []*Vnode // "backlog" of known successors
+	finger          []*Vnode
+	last_finger     int
+	predecessor     *Vnode
+	old_predecessor *Vnode
+	stabilized      time.Time
+	timer           *time.Timer
+	delegateMux     sync.Mutex
 }
 
 func (vn *localVnode) init(idx int) {
@@ -204,6 +207,7 @@ func (vn *localVnode) checkPredecessor() error {
 		ok, err := vn.ring.transport.Ping(vn.predecessor)
 		if err != nil || !ok {
 			log.Println("[stabilize] detected predecessor failure")
+			vn.old_predecessor = vn.predecessor
 			vn.predecessor = nil
 			return err
 		}

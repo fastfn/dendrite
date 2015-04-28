@@ -72,8 +72,13 @@ func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 	// Check if we should update our predecessor
 	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
-		log.Printf("Setting new predecessor for %X - %X\n", vn.Id, maybe_pred.Id)
-		go vn.ring.Delegate(&vn.Vnode, vn.predecessor, maybe_pred)
+		print_pred := &Vnode{}
+		if vn.old_predecessor != nil {
+			print_pred = vn.old_predecessor
+		}
+		log.Printf("Setting new predecessor for %X : %X -> %X\n", vn.Id, print_pred.Id, maybe_pred.Id)
+		// maybe we're just joining and one of our local vnodes is closer to us than this predecessor
+		vn.ring.Delegate(&vn.Vnode, vn.old_predecessor, maybe_pred, vn.delegateMux)
 		vn.predecessor = maybe_pred
 	}
 

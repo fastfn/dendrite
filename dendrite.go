@@ -6,6 +6,7 @@ import (
 	//"log"
 	"crypto/sha1"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -36,7 +37,7 @@ type TransportHook interface {
 // first Vnode param is local Vnode that handles delegation
 // second Vnode param is a Vnode representing new predecessor
 type DelegateHook interface {
-	Delegate(*Vnode, *Vnode, RingEventType)
+	Delegate(*Vnode, *Vnode, RingEventType, sync.Mutex)
 }
 
 type Transport interface {
@@ -186,6 +187,16 @@ func (r *Ring) init(config *Config, transport Transport) {
 		vn.init(i)
 	}
 	sort.Sort(r)
+
+	// for i := 0; i < config.NumVnodes; i++ {
+	// 	vn := r.vnodes[i]
+	// 	if i == 0 {
+	// 		vn.predecessor = &r.vnodes[config.NumVnodes-1].Vnode
+	// 	} else {
+	// 		vn.predecessor = &r.vnodes[i-1].Vnode
+	// 	}
+	// }
+
 	/*go func() {
 		for {
 			for _, vnode := range r.vnodes {
@@ -279,7 +290,6 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 				if s == nil {
 					break SL
 				}
-				//fmt.Printf("Trying position %d with len %d/%d vn.Id: %X, succ.Id: %X\n", suc_pos, len(vn.successors), len(succs), vn.Id, s.Id)
 				vn.successors[suc_pos] = s
 				suc_pos += 1
 			}
@@ -311,17 +321,23 @@ var (
 	EvNodeLeft   RingEventType = 2
 )
 
-func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode) {
+func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode, mux sync.Mutex) {
 	// we have new predecessor, lets figure out what happened
 	var ev RingEventType
+	print_old := &Vnode{}
+	if old_pred != nil {
+		print_old = old_pred
+	}
 	if old_pred == nil || between(old_pred.Id, localVn.Id, new_pred.Id, false) {
+		fmt.Printf("JOIIINED: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
 		ev = EvNodeJoined
 	} else {
+		fmt.Printf("LEEEEEFT: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
 		ev = EvNodeLeft
 	}
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
 		//fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
-		dh.Delegate(localVn, new_pred, ev)
+		dh.Delegate(localVn, new_pred, ev, mux)
 	}
 }
