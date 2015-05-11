@@ -175,6 +175,14 @@ func (transport *ZMQTransport) getVnodeHandler(dest *Vnode) (VnodeHandler, error
 	return nil, fmt.Errorf("local vnode handler not found")
 }
 
+func (transport *ZMQTransport) GetVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
+	handler, err := transport.getVnodeHandler(vnode)
+	if err != nil {
+		return nil, false
+	}
+	return handler, true
+}
+
 func (transport *ZMQTransport) Register(vnode *Vnode, handler VnodeHandler) {
 	transport.lock.Lock()
 	transport.table[vnode.String()] = &localHandler{vn: vnode, handler: handler}

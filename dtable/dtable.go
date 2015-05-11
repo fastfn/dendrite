@@ -10,23 +10,42 @@ import (
 	"time"
 )
 
+type replicaState int
+
 const (
-	PbDtableGet      dendrite.MsgType = 0x20
-	PbDtableGetResp  dendrite.MsgType = 0x21
-	PbDtableSet      dendrite.MsgType = 0x22
-	PbDtableSetResp  dendrite.MsgType = 0x23
-	PbDtableSetMulti dendrite.MsgType = 0x24
+	PbDtableGet       dendrite.MsgType = 0x20
+	PbDtableGetResp   dendrite.MsgType = 0x21
+	PbDtableSet       dendrite.MsgType = 0x22
+	PbDtableSetResp   dendrite.MsgType = 0x23
+	PbDtableSetMulti  dendrite.MsgType = 0x24
+	PbDtableSetMeta   dendrite.MsgType = 0x25
+	replicaComplete   replicaState     = 0
+	replicaIncomplete replicaState     = 1
 )
+
+type rvalue struct {
+	Val           []byte
+	timestamp     time.Time
+	depth         int
+	state         replicaState
+	master        *dendrite.Vnode
+	replicaVnodes []*dendrite.Vnode
+}
 
 type value struct {
 	Val       []byte
 	timestamp time.Time
-	replicas  int
+	isReplica bool
+	commited  bool
+	rstate    replicaState
 }
+
 type kvMap map[string]*value
+type rkvMap map[string]*rvalue
 
 type DTable struct {
 	table     map[string]kvMap
+	rtable    map[string]rkvMap // rtable is table of replicas
 	ring      *dendrite.Ring
 	transport dendrite.Transport
 }
@@ -34,14 +53,17 @@ type DTable struct {
 func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 	dt := &DTable{
 		table:     make(map[string]kvMap),
+		rtable:    make(map[string]rkvMap),
 		ring:      ring,
 		transport: transport,
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
 		node_kv := make(map[string]*value)
+		node_rkv := make(map[string]*rvalue)
 		vn_key_str := fmt.Sprintf("%x", vnode.Id)
 		dt.table[vn_key_str] = node_kv
+		dt.rtable[vn_key_str] = node_rkv
 	}
 	transport.RegisterHook(dt)
 	ring.RegisterDelegateHook(dt)
@@ -86,6 +108,14 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		}
 		cm.TransportMsg = dtableSetMsg
 		cm.TransportHandler = dt.zmq_set_handler
+	case PbDtableSetMeta:
+		var dtableSetMetaMsg PBDTableSetMeta
+		err := proto.Unmarshal(cm.Data, &dtableSetMetaMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableSetMeta message - %s - %+v", err, cm.Data)
+		}
+		cm.TransportMsg = dtableSetMetaMsg
+		cm.TransportHandler = dt.zmq_setmeta_handler
 	case PbDtableSetResp:
 		var dtableSetRespMsg PBDTableSetResp
 		err := proto.Unmarshal(cm.Data, &dtableSetRespMsg)
@@ -113,7 +143,7 @@ func (dt *DTable) get(key []byte) ([]byte, error) {
 	vn_key_str := fmt.Sprintf("%x", succs[0].Id)
 	vn_table, ok := dt.table[vn_key_str]
 	if ok {
-		key_str := fmt.Sprintf("%x", dendrite.HashKey(key))
+		key_str := fmt.Sprintf("%x", key)
 		if v, exists := vn_table[key_str]; exists {
 			return v.Val, nil
 		} else {
@@ -134,83 +164,104 @@ func (dt *DTable) get(key []byte) ([]byte, error) {
 	return nil, last_err
 }
 
-// set() writes to table
+// handle remote replica requests
+func (dt *DTable) setReplica(vnode *dendrite.Vnode, key_str string, rval *rvalue) {
+	if rval.Val == nil {
+		delete(dt.rtable[vnode.String()], key_str)
+	} else {
+		dt.rtable[vnode.String()][key_str] = rval
+	}
+}
+
+// set() writes to table. It is called from both DTable api and by remote clients via zmq
 // writes: total writes to execute
 // wtl: writes to live. 0 means we're done
 // skip: how many remote successors to skip in loop
 // reports back on done ch
-func (dt *DTable) set(key, val []byte, writes, wtl, skip int, done chan error) {
-	succs, err := dt.ring.Lookup(dt.ring.Replicas(), key)
-	if err != nil {
-		done <- err
+
+// handles local write
+func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, done chan error) {
+	// write to as many "acks" as was requested
+	// if acks is lower than number of replicas, send signal to done chan after writing to n writes
+	// but continue with writing to the rest of replicas
+
+	// make sure we have local handler before doing any write
+	handler, _ := dt.transport.GetVnodeHandler(vn)
+	if handler == nil {
+		done <- fmt.Errorf("local handler could not be found for vnode %x", vn.Id)
+		return
+	}
+	write_count := 0
+	vn_table, _ := dt.table[vn.String()]
+	key_str := fmt.Sprintf("%x", key)
+	if val.Val == nil {
+		delete(vn_table, key_str)
+	} else {
+		vn_table[key_str] = val
+	}
+	write_count += 1
+	returned := false
+	// should we return to client immediately?
+	if minAcks == write_count {
+		if dt.ring.Replicas() == write_count {
+			val.rstate = replicaComplete
+			vn_table[key_str] = val
+		}
+		localCommit(vn_table, key_str, val)
+		done <- nil
+		returned = true
+	}
+	if dt.ring.Replicas() == 0 {
+		if !returned {
+			done <- nil
+		}
 		return
 	}
 
-	// write to as many "writes" was requested
-	// if writes is lower than number of replicas, send signal to done chan after writing to n writes
-	// but continue with writing to the rest of replicas
-	last_idx := 0
-	key_str := fmt.Sprintf("%x", dendrite.HashKey(key))
-	for i := 0; i < writes; i++ {
-		if succs[i] == nil {
-			done <- fmt.Errorf("not enough successors found for replicated write")
-			// TODO: cleanup previously written keys if necessary (i>0 at this point)
-			return
+	// find remote successors to write replicas to
+	remote_succs, err := handler.FindRemoteSuccessors(dt.ring.Replicas())
+	if err != nil {
+		done <- fmt.Errorf("could not find enough replica nodes due to error %s", err)
+		return
+	}
+
+	// now lets write replicas
+	item_replicas := make([]*dendrite.Vnode, 0)
+	repwrite_count := 0
+
+	for _, succ := range remote_succs {
+		// let client know we're done if minAcks is reached
+		if repwrite_count == minAcks && !returned {
+			returned = true
+			localCommit(vn_table, key_str, val)
+			done <- nil
 		}
-		succ_key_str := fmt.Sprintf("%x", succs[i].Id)
-		vn_table, ok := dt.table[succ_key_str]
-		if ok {
-			if val == nil {
-				delete(vn_table, key_str)
-			} else {
-				vn_table[key_str] = &value{
-					Val:       val,
-					timestamp: time.Now(),
-					replicas:  writes,
-				}
-			}
-		} else {
-			err = dt.remoteSet(succs[i], dendrite.HashKey(key), val)
-			if err != nil {
-				log.Println("ZMQ::remoteSet error - ", err)
-				done <- err
+		nval := &value{
+			Val:       val.Val,
+			timestamp: val.timestamp,
+			rstate:    replicaIncomplete,
+			isReplica: true,
+			commited:  false,
+		}
+		done_c := make(chan error)
+		go dt.remoteSet(succ, key, nval, minAcks, done_c)
+		err = <-done_c
+		if err != nil {
+			if !returned {
+				done <- fmt.Errorf("could not write replica due to error %s", err)
 				return
 			}
+			return
 		}
-		last_idx += 1
+		item_replicas = append(item_replicas, succ)
 	}
-	// we're done as far as client should know
-	done <- nil
+	// replicas have been written, lets now update metadata
 
 	// write to the rest of replicas if necessary
-	max_replicas := dendrite.Min(dt.ring.Replicas(), len(succs))
-	for i := last_idx; i < max_replicas; i++ {
-		if succs[i] == nil {
-			// there are not enough replicas to complete the write
-			return
-		}
-		succ_key_str := fmt.Sprintf("%x", succs[i].Id)
-		vn_table, ok := dt.table[succ_key_str]
-		if ok {
-			if val == nil {
-				delete(vn_table, key_str)
-			} else {
-				vn_table[key_str] = &value{
-					Val:       val,
-					timestamp: time.Now(),
-					replicas:  writes,
-				}
-			}
-		} else {
-			err = dt.remoteSet(succs[i], dendrite.HashKey(key), val)
-			if err != nil {
-				log.Println("ZMQ::remoteSet error - ", err)
-				return
-			}
-		}
-	}
+	done <- nil
 }
 
+/*
 func (dt *DTable) set2(key, val []byte, writes, wtl, skip int, done chan error) {
 	fmt.Println(writes, wtl, skip)
 	if wtl == 0 {
@@ -243,7 +294,6 @@ func (dt *DTable) set2(key, val []byte, writes, wtl, skip int, done chan error) 
 			vn_table[key_str] = &value{
 				Val:       val,
 				timestamp: time.Now(),
-				replicas:  writes,
 			}
 		}
 		wtl--
@@ -271,13 +321,18 @@ func (dt *DTable) set2(key, val []byte, writes, wtl, skip int, done chan error) 
 		return
 	}
 }
+*/
 
 func (dt *DTable) DumpStr() {
 	fmt.Println("Dumping DTABLE")
 	for vn_id, vn_table := range dt.table {
 		fmt.Printf("\tvnode: %s\n", vn_id)
 		for key, val := range vn_table {
-			fmt.Printf("\t\t%s - %s\n", key, val.Val)
+			fmt.Printf("\t\t%s - %s - %v\n", key, val.Val, val.commited)
+		}
+		rt, _ := dt.rtable[vn_id]
+		for key, val := range rt {
+			fmt.Printf("\t\t- r - %s - %s\n", key, val.Val)
 		}
 	}
 }
@@ -286,13 +341,20 @@ func (dt *DTable) DumpStr() {
 // if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
 //                 for other keys, just copy them to all replicas as we might be in deficite
 func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType, mux sync.Mutex) {
-
 	time.Sleep(dt.ring.MaxStabilize())
 	mux.Lock()
 	defer mux.Unlock()
 	// find my successors
 	max_replicas := dt.ring.Replicas()
-	replicas, err := dt.transport.FindSuccessors(localVn, max_replicas, localVn.Id)
+	// get the handler for this vnode
+	handler, ok := dt.transport.GetVnodeHandler(localVn)
+	if !ok {
+		// can't do this
+		return
+	}
+	replicas, err := handler.FindRemoteSuccessors(max_replicas)
+
+	//replicas, err := dt.transport.FindSuccessors(localVn, max_replicas, localVn.Id)
 	if err != nil {
 		log.Println("DTable::Delegate - error while finding replicas:", err)
 		return
@@ -313,7 +375,9 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 		for _, succ := range replicas {
 			for key_str, val := range vn_table {
 				key, _ := hex.DecodeString(key_str)
-				err := dt.remoteSet(succ, key, val.Val)
+				done_c := make(chan error)
+				go dt.remoteSet(succ, key, val, 0, done_c)
+				err := <-done_c
 				if err != nil {
 					log.Println("Dendrite::Delegate - failed to replicate key:", err)
 				}
@@ -330,7 +394,9 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 			key, _ := hex.DecodeString(key_str)
 			if dendrite.Between(key, localVn.Id, new_pred.Id, true) {
 				// copy the key to new predecessor
-				err := dt.remoteSet(new_pred, key, val.Val)
+				done_c := make(chan error)
+				go dt.remoteSet(new_pred, key, val, 0, done_c)
+				err := <-done_c
 				if err != nil {
 					log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
 					continue
@@ -343,7 +409,8 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 				if last_replica.Host == new_pred.Host {
 					continue
 				}
-				err = dt.remoteSet(last_replica, key, nil)
+				go dt.remoteSet(last_replica, key, nil, 0, done_c)
+				err = <-done_c
 				if err != nil {
 					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
 				}
@@ -358,5 +425,13 @@ func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrit
 		}
 	default:
 		return
+	}
+}
+
+func localCommit(vn_table kvMap, key_str string, val *value) {
+	if val.Val != nil {
+		item, _ := vn_table[key_str]
+		item.commited = true
+		vn_table[key_str] = item
 	}
 }

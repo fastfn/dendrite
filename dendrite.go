@@ -53,8 +53,11 @@ type Transport interface {
 	// Notify our successor of ourselves
 	Notify(dest, self *Vnode) ([]*Vnode, error)
 
-	// Find a successors for vnode key
+	// Find successors for vnode key
 	FindSuccessors(*Vnode, int, []byte) ([]*Vnode, error)
+
+	// Find vnodeHandler if it exists locally
+	GetVnodeHandler(*Vnode) (VnodeHandler, bool)
 
 	// Clears a predecessor if it matches a given vnode. Used to leave.
 	//ClearPredecessor(target, self *Vnode) error
@@ -91,7 +94,7 @@ func DefaultConfig(hostname string) *Config {
 		StabilizeMin:  1 * time.Second,
 		StabilizeMax:  3 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
-		Replicas:      3,
+		Replicas:      2,
 	}
 }
 
@@ -263,7 +266,6 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 	r.init(config, transport)
 
 	// for each vnode, get the new list of live successors from remote
-
 	for _, vn := range r.vnodes {
 		resolved := false
 		var last_error error
@@ -338,6 +340,6 @@ func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode, mux sync.Mutex) {
 	// call registered delegate hooks.. if any
 	for _, dh := range r.delegateHooks {
 		//fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
-		dh.Delegate(localVn, new_pred, ev, mux)
+		go dh.Delegate(localVn, new_pred, ev, mux)
 	}
 }

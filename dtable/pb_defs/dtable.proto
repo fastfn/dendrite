@@ -14,7 +14,18 @@ message PBDTableGetResp {
 message PBDTableSet {
 	required dendrite.PBProtoVnode dest = 1;
 	required bytes key = 2;
-	optional bytes val = 3;
+	required bool isReplica = 3;
+	optional bytes val = 4;
+}
+
+// set metadata for replica records
+message PBDTableSetMeta {
+	required dendrite.PBProtoVnode dest = 1;
+	required bytes key = 2;
+	required int32 state = 3;
+	required int32 depth = 4;
+	required dendrite.PBProtoVnode master = 5;
+	repeated dendrite.PBProtoVnode replicaVnodes = 6;
 }
 
 message PBDTableSetResp {

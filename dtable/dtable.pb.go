@@ -12,6 +12,7 @@ It has these top-level messages:
 	PBDTableGet
 	PBDTableGetResp
 	PBDTableSet
+	PBDTableSetMeta
 	PBDTableSetResp
 */
 package dtable
@@ -75,7 +76,8 @@ func (m *PBDTableGetResp) GetValue() []byte {
 type PBDTableSet struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
 	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	Val              []byte                 `protobuf:"bytes,3,opt,name=val" json:"val,omitempty"`
+	IsReplica        *bool                  `protobuf:"varint,3,req,name=isReplica" json:"isReplica,omitempty"`
+	Val              []byte                 `protobuf:"bytes,4,opt,name=val" json:"val,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -97,9 +99,73 @@ func (m *PBDTableSet) GetKey() []byte {
 	return nil
 }
 
+func (m *PBDTableSet) GetIsReplica() bool {
+	if m != nil && m.IsReplica != nil {
+		return *m.IsReplica
+	}
+	return false
+}
+
 func (m *PBDTableSet) GetVal() []byte {
 	if m != nil {
 		return m.Val
+	}
+	return nil
+}
+
+// set metadata for replica records
+type PBDTableSetMeta struct {
+	Dest             *dendrite.PBProtoVnode   `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Key              []byte                   `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
+	State            *int32                   `protobuf:"varint,3,req,name=state" json:"state,omitempty"`
+	Depth            *int32                   `protobuf:"varint,4,req,name=depth" json:"depth,omitempty"`
+	Master           *dendrite.PBProtoVnode   `protobuf:"bytes,5,req,name=master" json:"master,omitempty"`
+	ReplicaVnodes    []*dendrite.PBProtoVnode `protobuf:"bytes,6,rep,name=replicaVnodes" json:"replicaVnodes,omitempty"`
+	XXX_unrecognized []byte                   `json:"-"`
+}
+
+func (m *PBDTableSetMeta) Reset()         { *m = PBDTableSetMeta{} }
+func (m *PBDTableSetMeta) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSetMeta) ProtoMessage()    {}
+
+func (m *PBDTableSetMeta) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSetMeta) GetKey() []byte {
+	if m != nil {
+		return m.Key
+	}
+	return nil
+}
+
+func (m *PBDTableSetMeta) GetState() int32 {
+	if m != nil && m.State != nil {
+		return *m.State
+	}
+	return 0
+}
+
+func (m *PBDTableSetMeta) GetDepth() int32 {
+	if m != nil && m.Depth != nil {
+		return *m.Depth
+	}
+	return 0
+}
+
+func (m *PBDTableSetMeta) GetMaster() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Master
+	}
+	return nil
+}
+
+func (m *PBDTableSetMeta) GetReplicaVnodes() []*dendrite.PBProtoVnode {
+	if m != nil {
+		return m.ReplicaVnodes
 	}
 	return nil
 }

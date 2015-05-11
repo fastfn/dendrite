@@ -56,6 +56,10 @@ func (lt *LocalTransport) getVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
 	return nil, ok
 }
 
+func (lt *LocalTransport) GetVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
+	return lt.getVnodeHandler(vnode)
+}
+
 func (lt *LocalTransport) FindSuccessors(vn *Vnode, limit int, key []byte) ([]*Vnode, error) {
 	// Look for it locally
 	handler, ok := lt.getVnodeHandler(vn)

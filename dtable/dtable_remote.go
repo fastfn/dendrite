@@ -94,7 +94,7 @@ func (dt *DTable) remoteGet(remote *dendrite.Vnode, key []byte) ([]byte, bool, e
 }
 
 // Client Request: set value for a key to remote host
-func (dt *DTable) remoteSet(remote *dendrite.Vnode, key, val []byte) error {
+func (dt *DTable) remoteSet(remote *dendrite.Vnode, key []byte, val *value, minAcks int, done chan error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan bool, 1)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
@@ -105,8 +105,8 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key, val []byte) error {
 			error_c <- fmt.Errorf("ZMQ:DTable:remoteSet - newsocket error - %s", err)
 			return
 		}
-		req_sock.SetRcvtimeo(2 * time.Second)
-		req_sock.SetSndtimeo(2 * time.Second)
+		req_sock.SetRcvtimeo(5 * time.Second)
+		req_sock.SetSndtimeo(5 * time.Second)
 
 		defer req_sock.Close()
 		err = req_sock.Connect("tcp://" + remote.Host)
@@ -120,9 +120,10 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key, val []byte) error {
 			Id:   remote.Id,
 		}
 		req := &PBDTableSet{
-			Dest: dest,
-			Key:  key,
-			Val:  val,
+			Dest:      dest,
+			Key:       key,
+			Val:       val.Val,
+			IsReplica: proto.Bool(val.isReplica),
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -167,7 +168,103 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key, val []byte) error {
 
 	select {
 	case <-time.After(zmq_transport.ClientTimeout):
-		return fmt.Errorf("ZMQ:DTable:remoteSet - command timed out!")
+		done <- fmt.Errorf("ZMQ:DTable:remoteSet - command timed out!")
+	case err := <-error_c:
+		done <- err
+	case _ = <-resp_c:
+		done <- nil
+	}
+}
+
+// Client Request: set meta for replicated item to remote host
+func (dt *DTable) remoteSetMeta(remote *dendrite.Vnode, key []byte, rval *rvalue) error {
+	error_c := make(chan error, 1)
+	resp_c := make(chan bool, 1)
+	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+
+	go func() {
+		req_sock, err := zmq_transport.ZMQContext.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSet - newsocket error - %s", err)
+			return
+		}
+		req_sock.SetRcvtimeo(5 * time.Second)
+		req_sock.SetSndtimeo(5 * time.Second)
+
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + remote.Host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSet - connect error - %s", err)
+			return
+		}
+		// Build request protobuf
+		dest := &dendrite.PBProtoVnode{
+			Host: proto.String(remote.Host),
+			Id:   remote.Id,
+		}
+		master := &dendrite.PBProtoVnode{
+			Host: proto.String(rval.master.Host),
+			Id:   rval.master.Id,
+		}
+		replica_vnodes := make([]*dendrite.PBProtoVnode, 0)
+		for _, rvn := range rval.replicaVnodes {
+			replica_vnodes = append(replica_vnodes, &dendrite.PBProtoVnode{
+				Host: proto.String(rvn.Host),
+				Id:   rvn.Id,
+			})
+		}
+
+		req := &PBDTableSetMeta{
+			Dest:          dest,
+			Key:           key,
+			Master:        master,
+			Depth:         proto.Int32(int32(rval.depth)),
+			ReplicaVnodes: replica_vnodes,
+		}
+
+		reqData, _ := proto.Marshal(req)
+		encoded := dt.transport.Encode(PbDtableSetMeta, reqData)
+		_, err = req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - error while sending request - %s", err)
+			return
+		}
+
+		// read response and decode it
+		resp, err := req_sock.RecvBytes(0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - error while reading response - %s", err)
+			return
+		}
+		decoded, err := dt.transport.Decode(resp)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - error while decoding response - %s", err)
+			return
+		}
+
+		switch decoded.Type {
+		case dendrite.PbErr:
+			pbMsg := decoded.TransportMsg.(dendrite.PBProtoErr)
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - got error response - %s", pbMsg.GetError())
+		case PbDtableSetResp:
+			pbMsg := decoded.TransportMsg.(PBDTableSetResp)
+			success := pbMsg.GetOk()
+			if success {
+				resp_c <- true
+				return
+			}
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - write error - %s", pbMsg.GetError())
+			return
+		default:
+			// unexpected response
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteSetMeta - unexpected response")
+			return
+		}
+	}()
+
+	select {
+	case <-time.After(zmq_transport.ClientTimeout):
+		return fmt.Errorf("ZMQ:DTable:remoteSetMeta - command timed out!")
 	case err := <-error_c:
 		return err
 	case _ = <-resp_c:

@@ -2,6 +2,8 @@ package dtable
 
 import (
 	"fmt"
+	"github.com/fastfn/dendrite"
+	"time"
 	//"log"
 )
 
@@ -16,10 +18,9 @@ const (
 type Query struct {
 	dt      *DTable
 	qType   queryType
-	writes  int
 	minAcks int
 	key     []byte
-	val     []byte
+	val     *value
 	err     error
 }
 
@@ -27,20 +28,13 @@ func (dt *DTable) NewQuery() *Query {
 	return &Query{
 		dt:      dt,
 		qType:   -1,
-		writes:  1,
 		minAcks: 1,
 	}
 }
 
-func (q *Query) Writes(n int) *Query {
-	if n >= 1 && n <= q.dt.ring.Replicas() {
-		q.writes = n
-	}
-	return q
-}
-
+// we always do 1 write
 func (q *Query) Consistency(n int) *Query {
-	if n >= 1 && n <= 3 && n <= q.writes {
+	if n >= 1 && n <= q.dt.ring.Replicas()+1 {
 		q.minAcks = n
 	}
 	return q
@@ -53,8 +47,14 @@ func (q *Query) Get(key []byte) *Query {
 }
 
 func (q *Query) Set(key, val []byte) *Query {
-	q.key = key
-	q.val = val
+	q.key = dendrite.HashKey(key)
+	q.val = &value{
+		Val:       val,
+		isReplica: false,
+		commited:  false,
+		rstate:    replicaIncomplete,
+		timestamp: time.Now(),
+	}
 	q.qType = qSet
 	return q
 }
@@ -65,8 +65,22 @@ func (q *Query) Exec() ([]byte, error) {
 		return q.dt.get(q.key)
 	case qSet:
 		wait := make(chan error)
-		go q.dt.set(q.key, q.val, q.minAcks, q.minAcks, 0, wait)
-		err := <-wait
+		succs, err := q.dt.ring.Lookup(1, q.key)
+		if err != nil {
+			return nil, err
+		}
+		if len(succs) != 1 || succs[0] == nil {
+			return nil, fmt.Errorf("successor lookup failed for key, %x", q.key)
+		}
+		// see if this node is responsible for this key
+		_, ok := q.dt.table[succs[0].String()]
+		if ok {
+			go q.dt.set(succs[0], q.key, q.val, q.minAcks, wait)
+		} else {
+			// pass to remote
+			go q.dt.remoteSet(succs[0], q.key, q.val, q.minAcks, wait)
+		}
+		err = <-wait
 		return nil, err
 	default:
 		return nil, fmt.Errorf("unknown query")
