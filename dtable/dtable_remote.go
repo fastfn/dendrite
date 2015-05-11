@@ -218,6 +218,7 @@ func (dt *DTable) remoteSetMeta(remote *dendrite.Vnode, key []byte, rval *rvalue
 			Dest:          dest,
 			Key:           key,
 			Master:        master,
+			State:         proto.Int32(int32(rval.state)),
 			Depth:         proto.Int32(int32(rval.depth)),
 			ReplicaVnodes: replica_vnodes,
 		}

@@ -16,12 +16,13 @@ const (
 )
 
 type Query struct {
-	dt      *DTable
-	qType   queryType
-	minAcks int
-	key     []byte
-	val     *value
-	err     error
+	dt       *DTable
+	qType    queryType
+	minAcks  int
+	key      []byte
+	orig_key []byte
+	val      *value
+	err      error
 }
 
 func (dt *DTable) NewQuery() *Query {
@@ -48,6 +49,7 @@ func (q *Query) Get(key []byte) *Query {
 
 func (q *Query) Set(key, val []byte) *Query {
 	q.key = dendrite.HashKey(key)
+	q.orig_key = key
 	q.val = &value{
 		Val:       val,
 		isReplica: false,
@@ -65,7 +67,7 @@ func (q *Query) Exec() ([]byte, error) {
 		return q.dt.get(q.key)
 	case qSet:
 		wait := make(chan error)
-		succs, err := q.dt.ring.Lookup(1, q.key)
+		succs, err := q.dt.ring.Lookup(1, q.orig_key)
 		if err != nil {
 			return nil, err
 		}

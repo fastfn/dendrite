@@ -62,7 +62,7 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 
 	// make sure destination vnode exists locally
-	vn_table, ok := dt.table[dest_key_str]
+	_, ok := dt.table[dest_key_str]
 	if !ok {
 		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetHandler - local vnode table not found")
 		w <- errorMsg
@@ -81,31 +81,46 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		dt.setReplica(dest, key_str, new_rval)
 		setResp.Ok = proto.Bool(true)
 	} else {
+
 		new_val := &value{
 			timestamp: time.Now(),
 			Val:       val,
+			isReplica: false,
+			commited:  false,
+			rstate:    replicaIncomplete,
 		}
-		// see if key exists with older timestamp
-		if v, ok := vn_table[key_str]; ok {
-			if v.timestamp.UnixNano() <= new_val.timestamp.UnixNano() {
-				// key exists but the record is older than new one
+		wait := make(chan error)
+		go dt.set(dest, key, new_val, dt.ring.Replicas(), wait)
+		err := <-wait
+		if err != nil {
+			setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
+		} else {
+			setResp.Ok = proto.Bool(true)
+		}
+		/*
+
+			// see if key exists with older timestamp
+			if v, ok := vn_table[key_str]; ok {
+				if v.timestamp.UnixNano() <= new_val.timestamp.UnixNano() {
+					// key exists but the record is older than new one
+					if new_val.Val == nil {
+						delete(vn_table, key_str)
+					} else {
+						vn_table[key_str] = new_val
+					}
+					setResp.Ok = proto.Bool(true)
+				} else {
+					setResp.Error = proto.String("new record too old to set for this key")
+				}
+			} else {
 				if new_val.Val == nil {
 					delete(vn_table, key_str)
 				} else {
 					vn_table[key_str] = new_val
 				}
 				setResp.Ok = proto.Bool(true)
-			} else {
-				setResp.Error = proto.String("new record too old to set for this key")
 			}
-		} else {
-			if new_val.Val == nil {
-				delete(vn_table, key_str)
-			} else {
-				vn_table[key_str] = new_val
-			}
-			setResp.Ok = proto.Bool(true)
-		}
+		*/
 	}
 
 	// encode and send the response
@@ -150,14 +165,14 @@ func (dt *DTable) zmq_setmeta_handler(request *dendrite.ChordMsg, w chan *dendri
 	// make sure destination vnode exists locally
 	vn_table, ok := dt.rtable[dest_key_str]
 	if !ok {
-		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetHandler - local vnode table not found")
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetMetaHandler - local vnode table not found")
 		w <- errorMsg
 		return
 	}
 	key_str := fmt.Sprintf("%x", key)
 	item, ok := vn_table[key_str]
 	if !ok {
-		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetMeta - key not found")
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetMetaHandler - key not found")
 		w <- errorMsg
 		return
 	}
@@ -167,14 +182,14 @@ func (dt *DTable) zmq_setmeta_handler(request *dendrite.ChordMsg, w chan *dendri
 	item.depth = int(depth)
 	item.replicaVnodes = replica_vnodes
 	vn_table[key_str] = item
-
+	fmt.Printf("Replica state is: %d\n", item.state)
 	// encode and send the response
 	setResp := &PBDTableSetResp{
 		Ok: proto.Bool(true),
 	}
 	pbdata, err := proto.Marshal(setResp)
 	if err != nil {
-		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetHandler - failed to marshal response - " + err.Error())
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetMetaHandler - failed to marshal response - " + err.Error())
 		w <- errorMsg
 		return
 	}
