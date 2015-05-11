@@ -194,11 +194,29 @@ func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, d
 	write_count := 0
 	vn_table, _ := dt.table[vn.String()]
 	key_str := fmt.Sprintf("%x", key)
-	if val.Val == nil {
-		delete(vn_table, key_str)
+
+	// see if key exists with older timestamp
+	if v, ok := vn_table[key_str]; ok {
+		if v.timestamp.UnixNano() <= val.timestamp.UnixNano() {
+			// key exists but the record is older than new one
+			if val.Val == nil {
+				delete(vn_table, key_str)
+			} else {
+				vn_table[key_str] = val
+			}
+		} else {
+			done <- fmt.Errorf("set() refused write for key %s. Record too old: %d > %d",
+				key_str, v.timestamp.UnixNano(), val.timestamp.UnixNano())
+			return
+		}
 	} else {
-		vn_table[key_str] = val
+		if val.Val == nil {
+			delete(vn_table, key_str)
+		} else {
+			vn_table[key_str] = val
+		}
 	}
+
 	write_count += 1
 	returned := false
 	// should we return to client immediately?

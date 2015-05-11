@@ -15,7 +15,8 @@ message PBDTableSet {
 	required dendrite.PBProtoVnode dest = 1;
 	required bytes key = 2;
 	required bool isReplica = 3;
-	optional bytes val = 4;
+	required int32 minAcks = 4;
+	optional bytes val = 5;
 }
 
 // set metadata for replica records

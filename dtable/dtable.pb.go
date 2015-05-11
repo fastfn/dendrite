@@ -77,7 +77,8 @@ type PBDTableSet struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
 	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
 	IsReplica        *bool                  `protobuf:"varint,3,req,name=isReplica" json:"isReplica,omitempty"`
-	Val              []byte                 `protobuf:"bytes,4,opt,name=val" json:"val,omitempty"`
+	MinAcks          *int32                 `protobuf:"varint,4,req,name=minAcks" json:"minAcks,omitempty"`
+	Val              []byte                 `protobuf:"bytes,5,opt,name=val" json:"val,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -104,6 +105,13 @@ func (m *PBDTableSet) GetIsReplica() bool {
 		return *m.IsReplica
 	}
 	return false
+}
+
+func (m *PBDTableSet) GetMinAcks() int32 {
+	if m != nil && m.MinAcks != nil {
+		return *m.MinAcks
+	}
+	return 0
 }
 
 func (m *PBDTableSet) GetVal() []byte {

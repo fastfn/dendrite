@@ -124,6 +124,7 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key []byte, val *value, minA
 			Key:       key,
 			Val:       val.Val,
 			IsReplica: proto.Bool(val.isReplica),
+			MinAcks:   proto.Int32(int32(minAcks)),
 		}
 
 		reqData, _ := proto.Marshal(req)

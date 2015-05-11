@@ -54,6 +54,7 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	key := pbMsg.GetKey()
 	val := pbMsg.GetVal()
 	isReplica := pbMsg.GetIsReplica()
+	minAcks := int(pbMsg.GetMinAcks())
 	dest := &dendrite.Vnode{
 		Id:   pbMsg.GetDest().GetId(),
 		Host: pbMsg.GetDest().GetHost(),
@@ -90,37 +91,13 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 			rstate:    replicaIncomplete,
 		}
 		wait := make(chan error)
-		go dt.set(dest, key, new_val, dt.ring.Replicas(), wait)
+		go dt.set(dest, key, new_val, minAcks, wait)
 		err := <-wait
 		if err != nil {
 			setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
 		} else {
 			setResp.Ok = proto.Bool(true)
 		}
-		/*
-
-			// see if key exists with older timestamp
-			if v, ok := vn_table[key_str]; ok {
-				if v.timestamp.UnixNano() <= new_val.timestamp.UnixNano() {
-					// key exists but the record is older than new one
-					if new_val.Val == nil {
-						delete(vn_table, key_str)
-					} else {
-						vn_table[key_str] = new_val
-					}
-					setResp.Ok = proto.Bool(true)
-				} else {
-					setResp.Error = proto.String("new record too old to set for this key")
-				}
-			} else {
-				if new_val.Val == nil {
-					delete(vn_table, key_str)
-				} else {
-					vn_table[key_str] = new_val
-				}
-				setResp.Ok = proto.Bool(true)
-			}
-		*/
 	}
 
 	// encode and send the response
@@ -182,7 +159,6 @@ func (dt *DTable) zmq_setmeta_handler(request *dendrite.ChordMsg, w chan *dendri
 	item.depth = int(depth)
 	item.replicaVnodes = replica_vnodes
 	vn_table[key_str] = item
-	fmt.Printf("Replica state is: %d\n", item.state)
 	// encode and send the response
 	setResp := &PBDTableSetResp{
 		Ok: proto.Bool(true),
