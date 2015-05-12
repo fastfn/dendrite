@@ -6,7 +6,6 @@ import (
 	//"log"
 	"crypto/sha1"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -37,7 +36,7 @@ type TransportHook interface {
 // first Vnode param is local Vnode that handles delegation
 // second Vnode param is a Vnode representing new predecessor
 type DelegateHook interface {
-	Delegate(*Vnode, *Vnode, RingEventType, sync.Mutex)
+	EmitEvent(*EventCtx)
 }
 
 type Transport interface {
@@ -200,7 +199,7 @@ func (r *Ring) init(config *Config, transport Transport) {
 	// 	}
 	// }
 
-	/*go func() {
+	go func() {
 		for {
 			for _, vnode := range r.vnodes {
 				var pred []byte
@@ -211,17 +210,17 @@ func (r *Ring) init(config *Config, transport Transport) {
 				}
 
 				fmt.Printf("Vnode: %X -> pred: %X -> succ: ", vnode.Id, pred)
-				for _, suc := range vnode.successors {
+				for idx, suc := range vnode.successors {
 					if suc == nil {
 						break
 					}
-					fmt.Printf("%X, ", suc.Id)
+					fmt.Printf("succ-%d-%X, ", idx, suc.Id)
 				}
 				fmt.Printf("\n")
 			}
 			time.Sleep(15 * time.Second)
 		}
-	}()*/
+	}()
 }
 
 func (r *Ring) schedule() {
@@ -319,10 +318,23 @@ func (r *Ring) RegisterDelegateHook(dh DelegateHook) {
 type RingEventType int
 
 var (
-	EvNodeJoined RingEventType = 1
-	EvNodeLeft   RingEventType = 2
+	EvPredecessorJoined    RingEventType = 1
+	EvPredecessorLeft      RingEventType = 2
+	EvSuccessorListChanged RingEventType = 3
+	EvSuccessorChanged     RingEventType = 4
+	EvError                RingEventType = 5
 )
 
+type EventCtx struct {
+	EvType        RingEventType
+	Target        *Vnode
+	PrimaryItem   *Vnode
+	SecondaryItem *Vnode
+	ItemList      []*Vnode
+	ResponseCh    chan interface{}
+}
+
+/*
 func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode, mux sync.Mutex) {
 	// we have new predecessor, lets figure out what happened
 	var ev RingEventType
@@ -332,14 +344,22 @@ func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode, mux sync.Mutex) {
 	}
 	if old_pred == nil || between(old_pred.Id, localVn.Id, new_pred.Id, false) {
 		fmt.Printf("JOIIINED: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
-		ev = EvNodeJoined
+		ev = EvPredecessorJoined
 	} else {
 		fmt.Printf("LEEEEEFT: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
-		ev = EvNodeLeft
+		ev = EvPredecessorLeft
 	}
 	// call registered delegate hooks.. if any
+
 	for _, dh := range r.delegateHooks {
+
 		//fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
-		go dh.Delegate(localVn, new_pred, ev, mux)
+		//go dh.Delegate(localVn, new_pred, ev, mux)
+	}
+}
+*/
+func (r *Ring) emit(ctx *EventCtx) {
+	for _, dh := range r.delegateHooks {
+		go dh.EmitEvent(ctx)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	//"log"
 	"crypto/sha1"
+	"encoding/hex"
 	"math/big"
 	"math/rand"
 	"time"
@@ -124,4 +125,9 @@ func HashKey(key []byte) []byte {
 	hash := sha1.New()
 	hash.Write(key)
 	return hash.Sum(nil)
+}
+
+func KeyFromString(key_str string) []byte {
+	key, _ := hex.DecodeString(key_str)
+	return key
 }

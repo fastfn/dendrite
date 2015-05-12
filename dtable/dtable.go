@@ -1,12 +1,10 @@
 package dtable
 
 import (
-	"encoding/hex"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
 	"log"
-	"sync"
 	"time"
 )
 
@@ -44,10 +42,13 @@ type kvMap map[string]*value
 type rkvMap map[string]*rvalue
 
 type DTable struct {
+	// base structures
 	table     map[string]kvMap
 	rtable    map[string]rkvMap // rtable is table of replicas
 	ring      *dendrite.Ring
 	transport dendrite.Transport
+	// communication channels
+	event_c chan *dendrite.EventCtx
 }
 
 func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
@@ -56,6 +57,7 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 		rtable:    make(map[string]rkvMap),
 		ring:      ring,
 		transport: transport,
+		event_c:   make(chan *dendrite.EventCtx),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
@@ -66,8 +68,13 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 		dt.rtable[vn_key_str] = node_rkv
 	}
 	transport.RegisterHook(dt)
+	go dt.delegator()
 	ring.RegisterDelegateHook(dt)
 	return dt
+}
+
+func (dt *DTable) EmitEvent(ctx *dendrite.EventCtx) {
+	dt.event_c <- ctx
 }
 
 // Implement dendrite TransportHook
@@ -310,98 +317,8 @@ func (dt *DTable) DumpStr() {
 			if val.state == replicaComplete {
 				state = "in sync"
 			}
-			fmt.Printf("\t\t- r - %s - %s - %s\n", key, val.Val, state)
+			fmt.Printf("\t\t- r%d - %s - %s - %s\n", val.depth, key, val.Val, state)
 		}
-	}
-}
-
-// if node left, maintain consistency by finding local replicas and push them one step further if possible
-// if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
-//                 for other keys, just copy them to all replicas as we might be in deficite
-func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, changeType dendrite.RingEventType, mux sync.Mutex) {
-	time.Sleep(dt.ring.MaxStabilize())
-	mux.Lock()
-	defer mux.Unlock()
-	// find my successors
-	max_replicas := dt.ring.Replicas()
-	// get the handler for this vnode
-	handler, ok := dt.transport.GetVnodeHandler(localVn)
-	if !ok {
-		// can't do this
-		return
-	}
-	replicas, err := handler.FindRemoteSuccessors(max_replicas)
-
-	//replicas, err := dt.transport.FindSuccessors(localVn, max_replicas, localVn.Id)
-	if err != nil {
-		log.Println("DTable::Delegate - error while finding replicas:", err)
-		return
-	}
-	vn_table, _ := dt.table[localVn.String()]
-	var last_replica *dendrite.Vnode
-
-	switch changeType {
-	case dendrite.EvNodeLeft:
-		log.Printf("Node left me: %X for %X now replicating to:\n", localVn.Id, new_pred.Id)
-		for _, r := range replicas {
-			log.Printf("\t - %X\n", r.Id)
-		}
-		if len(replicas) == 0 {
-			return
-		}
-		for _, succ := range replicas {
-			for key_str, val := range vn_table {
-				key, _ := hex.DecodeString(key_str)
-				done_c := make(chan error)
-				go dt.remoteSet(succ, key, val, 0, done_c)
-				err := <-done_c
-				if err != nil {
-					log.Println("Dendrite::Delegate - failed to replicate key:", err)
-				}
-			}
-		}
-
-	case dendrite.EvNodeJoined:
-		log.Printf("Node joined me: %X  ... %X replicating to:\n", localVn.Id, new_pred.Id)
-		for _, r := range replicas {
-			log.Printf("\t - %X\n", r.Id)
-		}
-		// find all local keys that are < new predecessor
-		for key_str, val := range vn_table {
-			key, _ := hex.DecodeString(key_str)
-			if dendrite.Between(key, localVn.Id, new_pred.Id, true) {
-				// copy the key to new predecessor
-				done_c := make(chan error)
-				go dt.remoteSet(new_pred, key, val, 0, done_c)
-				err := <-done_c
-				if err != nil {
-					log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
-					continue
-				}
-				// remove the key from last replica unless last replica is our new predecessor
-				if len(replicas) == 0 {
-					continue
-				}
-				last_replica = replicas[len(replicas)-1]
-				if last_replica.Host == new_pred.Host {
-					continue
-				}
-				go dt.remoteSet(last_replica, key, nil, 0, done_c)
-				err = <-done_c
-				if err != nil {
-					log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
-				}
-			} else {
-				//for _, replica := range replicas {
-				// err := dt.remoteSet(replica, key, val.Val)
-				// if err != nil {
-				// 	log.Println("Dendrite::Delegate -- failed to propagate key to replica:", err)
-				// }
-				//}
-			}
-		}
-	default:
-		return
 	}
 }
 
