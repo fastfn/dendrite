@@ -124,10 +124,19 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 
 /* demote() - promotes new predecessor with keys from primary table
 if new predecessor is local:
-	- move all replica keys to new vnode
+	- move all of my replica keys to new vnode
 	- update metadata on all replica nodes to reflect this change
 if new predecessor is remote:
-  -
+  - for all keys in primary table, that are < new_pred.Id:
+  	1. move key to demoted table and wait there for cleanup call from new master
+  	2. call demoteKey() to commit to new_pred's primary table + let that vnode know where existing replicas are
+  	3. demoteKey() will callback to cleanup each key from demoted table after it's written new replicas
+  - handle replica-0 table such that:
+  	1. for each key, check if master vnode is located on same physical node as new_pred
+  	- if it is, we don't need to do anything because we're still natural remote successor
+  	- if not
+  		1. call demoteReplica() to let master know existing replica setup and about newRemoteSucc
+  		2. master will reconfigure replicas around and delete unnecessary copies (if any)
 */
 func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 	// determine if new_pred is on this node

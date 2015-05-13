@@ -25,6 +25,7 @@ func (dt *DTable) delegator() {
 				log.Printf("delegator() - predecessor joined")
 				dt.demote(event.Target, event.PrimaryItem)
 			}
+			// TODO: handle case dendrite.EvPredecessorFailed
 		}
 	}
 
