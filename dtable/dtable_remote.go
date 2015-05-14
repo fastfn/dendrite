@@ -94,7 +94,7 @@ func (dt *DTable) remoteGet(remote *dendrite.Vnode, key []byte) ([]byte, bool, e
 }
 
 // Client Request: set value for a key to remote host
-func (dt *DTable) remoteSet(remote *dendrite.Vnode, key []byte, val *value, minAcks int, done chan error) {
+func (dt *DTable) remoteSet(origin, remote *dendrite.Vnode, key []byte, val *value, minAcks int, demoting bool, done chan error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan bool, 1)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
@@ -119,12 +119,18 @@ func (dt *DTable) remoteSet(remote *dendrite.Vnode, key []byte, val *value, minA
 			Host: proto.String(remote.Host),
 			Id:   remote.Id,
 		}
+		origin := &dendrite.PBProtoVnode{
+			Host: proto.String(origin.Host),
+			Id:   origin.Id,
+		}
 		req := &PBDTableSet{
+			Origin:    origin,
 			Dest:      dest,
 			Key:       key,
 			Val:       val.Val,
 			IsReplica: proto.Bool(val.isReplica),
 			MinAcks:   proto.Int32(int32(minAcks)),
+			Demoting:  proto.Bool(demoting),
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -267,6 +273,89 @@ func (dt *DTable) remoteSetMeta(remote *dendrite.Vnode, key []byte, rval *rvalue
 	select {
 	case <-time.After(zmq_transport.ClientTimeout):
 		return fmt.Errorf("ZMQ:DTable:remoteSetMeta - command timed out!")
+	case err := <-error_c:
+		return err
+	case _ = <-resp_c:
+		return nil
+	}
+}
+
+// Client Request: remove replica
+func (dt *DTable) remoteClearReplica(remote *dendrite.Vnode, key []byte, demoted bool) error {
+	error_c := make(chan error, 1)
+	resp_c := make(chan bool, 1)
+	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+
+	go func() {
+		req_sock, err := zmq_transport.ZMQContext.NewSocket(zmq.REQ)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - newsocket error - %s", err)
+			return
+		}
+		req_sock.SetRcvtimeo(5 * time.Second)
+		req_sock.SetSndtimeo(5 * time.Second)
+
+		defer req_sock.Close()
+		err = req_sock.Connect("tcp://" + remote.Host)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - connect error - %s", err)
+			return
+		}
+		// Build request protobuf
+		dest := &dendrite.PBProtoVnode{
+			Host: proto.String(remote.Host),
+			Id:   remote.Id,
+		}
+
+		req := &PBDTableClearReplica{
+			Dest:    dest,
+			Key:     key,
+			Demoted: proto.Bool(demoted),
+		}
+
+		reqData, _ := proto.Marshal(req)
+		encoded := dt.transport.Encode(PbDtableClearReplica, reqData)
+		_, err = req_sock.SendBytes(encoded, 0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - error while sending request - %s", err)
+			return
+		}
+
+		// read response and decode it
+		resp, err := req_sock.RecvBytes(0)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - error while reading response - %s", err)
+			return
+		}
+		decoded, err := dt.transport.Decode(resp)
+		if err != nil {
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - error while decoding response - %s", err)
+			return
+		}
+
+		switch decoded.Type {
+		case dendrite.PbErr:
+			pbMsg := decoded.TransportMsg.(dendrite.PBProtoErr)
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - got error response - %s", pbMsg.GetError())
+		case PbDtableSetResp:
+			pbMsg := decoded.TransportMsg.(PBDTableSetResp)
+			success := pbMsg.GetOk()
+			if success {
+				resp_c <- true
+				return
+			}
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - error - %s", pbMsg.GetError())
+			return
+		default:
+			// unexpected response
+			error_c <- fmt.Errorf("ZMQ:DTable:remoteClearReplica - unexpected response")
+			return
+		}
+	}()
+
+	select {
+	case <-time.After(zmq_transport.ClientTimeout):
+		return fmt.Errorf("ZMQ:DTable:remoteSet - command timed out!")
 	case err := <-error_c:
 		return err
 	case _ = <-resp_c:

@@ -14,15 +14,10 @@ func (dt *DTable) delegator() {
 		case event := <-dt.event_c:
 			switch event.EvType {
 			case dendrite.EvPredecessorLeft:
-				/*
-					if predecessor leaves:
-						- promote new predecessor vnode with replica-0 records
-
-				*/
-				log.Printf("delegator() - predecessor left")
+				log.Printf("delegator() - predecessor left - promoting ourselves %s\n", event.Target.String())
 				dt.promote(event.Target)
 			case dendrite.EvPredecessorJoined:
-				log.Printf("delegator() - predecessor joined")
+				log.Printf("delegator() - predecessor joined - demoting keys to new predecessor %s\n", event.Target.String())
 				dt.demote(event.Target, event.PrimaryItem)
 			}
 			// TODO: handle case dendrite.EvPredecessorFailed

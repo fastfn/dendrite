@@ -12,11 +12,14 @@ message PBDTableGetResp {
 }
 
 message PBDTableSet {
-	required dendrite.PBProtoVnode dest = 1;
-	required bytes key = 2;
-	required bool isReplica = 3;
-	required int32 minAcks = 4;
-	optional bytes val = 5;
+	required dendrite.PBProtoVnode origin = 1;
+	required dendrite.PBProtoVnode dest = 2;
+	required bytes key = 3;
+	required bool isReplica = 4;
+	required int32 minAcks = 5;
+	repeated dendrite.PBProtoVnode replicaVnodes = 6;
+	optional bytes val = 7;
+	optional bool demoting = 8;
 }
 
 // set metadata for replica records
@@ -32,4 +35,18 @@ message PBDTableSetMeta {
 message PBDTableSetResp {
 	required bool ok = 1;
 	optional string error = 2;
+}
+
+message PBDTableDemoteKey {
+	required dendrite.PBProtoVnode dest = 1;
+	required bytes key = 2;
+	required bytes val = 3;
+	required int64 timestamp = 4;
+	repeated dendrite.PBProtoVnode replicaVnodes = 5;
+}
+
+message PBDTableClearReplica {
+	required dendrite.PBProtoVnode dest = 1;
+	required bytes key = 2;
+	required bool demoted = 3;
 }

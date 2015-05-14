@@ -1,6 +1,7 @@
 package dtable
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
@@ -11,18 +12,20 @@ import (
 type replicaState int
 
 const (
-	PbDtableGet       dendrite.MsgType = 0x20
-	PbDtableGetResp   dendrite.MsgType = 0x21
-	PbDtableSet       dendrite.MsgType = 0x22
-	PbDtableSetResp   dendrite.MsgType = 0x23
-	PbDtableSetMulti  dendrite.MsgType = 0x24
-	PbDtableSetMeta   dendrite.MsgType = 0x25
-	replicaComplete   replicaState     = 0
-	replicaIncomplete replicaState     = 1
+	PbDtableGet          dendrite.MsgType = 0x20
+	PbDtableGetResp      dendrite.MsgType = 0x21
+	PbDtableSet          dendrite.MsgType = 0x22
+	PbDtableSetResp      dendrite.MsgType = 0x23
+	PbDtableSetMulti     dendrite.MsgType = 0x24
+	PbDtableSetMeta      dendrite.MsgType = 0x25
+	PbDtableClearReplica dendrite.MsgType = 0x26
+	replicaComplete      replicaState     = 0
+	replicaIncomplete    replicaState     = 1
 )
 
 type rvalue struct {
 	Val           []byte
+	clean_key     []byte
 	timestamp     time.Time
 	depth         int
 	state         replicaState
@@ -31,41 +34,57 @@ type rvalue struct {
 }
 
 type value struct {
-	Val       []byte
-	timestamp time.Time
-	isReplica bool
-	commited  bool
-	rstate    replicaState
+	Val           []byte
+	clean_key     []byte
+	timestamp     time.Time
+	isReplica     bool
+	commited      bool
+	rstate        replicaState
+	replicaVnodes []*dendrite.Vnode
+}
+
+type demotedItem struct {
+	val           []byte
+	clean_key     []byte
+	timestamp     time.Time
+	new_master    *dendrite.Vnode
+	replicaVnodes []*dendrite.Vnode
+	demoted_ts    time.Time
 }
 
 type kvMap map[string]*value
 type rkvMap map[string]*rvalue
+type demotedMap map[string]*demotedItem
 
 type DTable struct {
 	// base structures
-	table     map[string]kvMap
-	rtable    map[string]rkvMap // rtable is table of replicas
-	ring      *dendrite.Ring
-	transport dendrite.Transport
+	table         map[string]kvMap
+	rtable        map[string]rkvMap // rtable is table of replicas
+	demoted_table map[string]demotedMap
+	ring          *dendrite.Ring
+	transport     dendrite.Transport
 	// communication channels
 	event_c chan *dendrite.EventCtx
 }
 
 func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 	dt := &DTable{
-		table:     make(map[string]kvMap),
-		rtable:    make(map[string]rkvMap),
-		ring:      ring,
-		transport: transport,
-		event_c:   make(chan *dendrite.EventCtx),
+		table:         make(map[string]kvMap),
+		rtable:        make(map[string]rkvMap),
+		demoted_table: make(map[string]demotedMap),
+		ring:          ring,
+		transport:     transport,
+		event_c:       make(chan *dendrite.EventCtx),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
 		node_kv := make(map[string]*value)
 		node_rkv := make(map[string]*rvalue)
+		node_demoted := make(map[string]*demotedItem)
 		vn_key_str := fmt.Sprintf("%x", vnode.Id)
 		dt.table[vn_key_str] = node_kv
 		dt.rtable[vn_key_str] = node_rkv
+		dt.demoted_table[vn_key_str] = node_demoted
 	}
 	transport.RegisterHook(dt)
 	go dt.delegator()
@@ -123,6 +142,14 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		}
 		cm.TransportMsg = dtableSetMetaMsg
 		cm.TransportHandler = dt.zmq_setmeta_handler
+	case PbDtableClearReplica:
+		var dtableClearReplicaMsg PBDTableClearReplica
+		err := proto.Unmarshal(cm.Data, &dtableClearReplicaMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableClearReplica message - %s - %+v", err, cm.Data)
+		}
+		cm.TransportMsg = dtableClearReplicaMsg
+		cm.TransportHandler = dt.zmq_clearreplica_handler
 	case PbDtableSetResp:
 		var dtableSetRespMsg PBDTableSetResp
 		err := proto.Unmarshal(cm.Data, &dtableSetRespMsg)
@@ -185,7 +212,6 @@ func (dt *DTable) setReplica(vnode *dendrite.Vnode, key_str string, rval *rvalue
 // wtl: writes to live. 0 means we're done
 // skip: how many remote successors to skip in loop
 // reports back on done ch
-
 // handles local write
 func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, done chan error) {
 	// write to as many "acks" as was requested
@@ -272,7 +298,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, d
 			commited:  false,
 		}
 		done_c := make(chan error)
-		go dt.remoteSet(succ, key, nval, minAcks, done_c)
+		go dt.remoteSet(vn, succ, key, nval, minAcks, false, done_c)
 		err = <-done_c
 		if err != nil {
 			if !returned {
@@ -327,5 +353,41 @@ func localCommit(vn_table map[string]*value, key_str string, val *value) {
 		item, _ := vn_table[key_str]
 		item.commited = true
 		vn_table[key_str] = item
+	}
+}
+
+// processDemoteKey() is called when our successor is demoting key to us
+// AFTER we took over the key and built new replicas
+// here we clear old replicas if necessary
+// at the end, we make a call to origin (old primary for this key) to clear demotedItem there
+func (dt *DTable) processDemoteKey(vnode, origin *dendrite.Vnode, key []byte, val *value, oldReplicas []*dendrite.Vnode) {
+	// find the key in our primary table
+	key_str := fmt.Sprintf("%x", key)
+	if val, ok := dt.table[vnode.String()][key_str]; ok {
+		// compare old replicas to active replicas
+		// replica depth is already updated across replicas when we wrote key to primary table
+		// if oldReplica.Id is not listed in active replicas - we need to remove that replica
+	OLD:
+		for _, oldReplica := range oldReplicas {
+			for _, replica := range val.replicaVnodes {
+				if bytes.Compare(replica.Id, oldReplica.Id) == 0 {
+					continue OLD
+				}
+			}
+			// lets remove it
+			err := dt.remoteClearReplica(oldReplica, key, false)
+			if err != nil {
+				log.Printf("processDemoteKey() - failed while removing old replica on %x for key %s\n", oldReplica.Id, key_str)
+				continue
+			}
+		}
+		// now clear demoted item on origin
+		err := dt.remoteClearReplica(origin, key, true)
+		if err != nil {
+			log.Printf("processDemoteKey() - failed while removing demoted key from origin %x for key %s\n", origin.Id, key_str)
+		}
+	} else {
+		log.Println("processDemoteKey failed - key not found:", key_str)
+		return
 	}
 }

@@ -80,7 +80,7 @@ func (q *Query) Exec() ([]byte, error) {
 			go q.dt.set(succs[0], q.key, q.val, q.minAcks, wait)
 		} else {
 			// pass to remote
-			go q.dt.remoteSet(succs[0], q.key, q.val, q.minAcks, wait)
+			go q.dt.remoteSet(succs[0], succs[0], q.key, q.val, q.minAcks, false, wait)
 		}
 		err = <-wait
 		return nil, err

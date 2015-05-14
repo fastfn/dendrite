@@ -5,6 +5,7 @@ import (
 	"github.com/fastfn/dendrite"
 	"log"
 	"sync"
+	"time"
 )
 
 // if node left, maintain consistency by finding local replicas and push them one step further if possible
@@ -125,9 +126,10 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 /* demote() - promotes new predecessor with keys from primary table
 if new predecessor is local:
 	- move all of my replica keys to new vnode
-	- update metadata on all replica nodes to reflect this change
+	- replica scheme of remote successors doesn't change here
+	  we just need to update metadata on all replica nodes to reflect this change
 if new predecessor is remote:
-  - for all keys in primary table, that are < new_pred.Id:
+  - for all keys in primary table, that are <= new_pred.Id:
   	1. move key to demoted table and wait there for cleanup call from new master
   	2. call demoteKey() to commit to new_pred's primary table + let that vnode know where existing replicas are
   	3. demoteKey() will callback to cleanup each key from demoted table after it's written new replicas
@@ -177,7 +179,24 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 			}
 		}
 	case false:
+		// loop over primary table to find keys that should belong to new predecessor
+		vn_table := dt.table[vnode.String()]
+		for key_str, val := range vn_table {
+			key := dendrite.KeyFromString(key_str)
+			if dendrite.Between(vnode.Id, new_pred.Id, key, true) {
+				// copy the key to demoted table and remove it from primary one
+				dt.demoted_table[vnode.String()][key_str] = value2demotedItem(val, new_pred)
+				delete(vn_table, key_str)
+				done_c := make(chan error)
+				go dt.remoteSet(vnode, new_pred, key, val, dt.ring.Replicas(), true, done_c)
+				err := <-done_c
+				if err != nil {
+					log.Println("Error demoting key to new predecessor -", err)
+					continue
+				}
 
+			}
+		}
 	}
 
 }
@@ -207,7 +226,7 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, li
 			commited:  false,
 		}
 		done_c := make(chan error)
-		go dt.remoteSet(succ, key, nval, 1, done_c)
+		go dt.remoteSet(vnode, succ, key, nval, 1, false, done_c)
 		err = <-done_c
 		if err != nil {
 			log.Printf("replicator returned due to error %s\n", err.Error())
@@ -240,6 +259,19 @@ func rvalue2value(rval *rvalue) *value {
 		isReplica: false,
 		commited:  false,
 		rstate:    replicaIncomplete,
+	}
+}
+
+func value2demotedItem(val *value, new_master *dendrite.Vnode) *demotedItem {
+	data := make([]byte, len(val.Val))
+	copy(data, val.Val)
+	return &demotedItem{
+		val:           data,
+		clean_key:     val.clean_key,
+		timestamp:     val.timestamp,
+		new_master:    new_master,
+		replicaVnodes: val.replicaVnodes,
+		demoted_ts:    time.Now(),
 	}
 }
 
