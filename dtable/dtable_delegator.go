@@ -19,6 +19,9 @@ func (dt *DTable) delegator() {
 			case dendrite.EvPredecessorJoined:
 				log.Printf("delegator() - predecessor joined - demoting keys to new predecessor %s\n", event.Target.String())
 				dt.demote(event.Target, event.PrimaryItem)
+			case dendrite.EvReplicasChanged:
+				log.Printf("delegator() - replicas changed on %s\n", event.Target.String())
+				dt.changeReplicas(event.Target, event.ItemList)
 			}
 			// TODO: handle case dendrite.EvPredecessorFailed
 		}

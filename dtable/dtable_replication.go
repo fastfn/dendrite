@@ -200,6 +200,11 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 
 }
 
+// changeReplicas()
+func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite.Vnode) {
+
+}
+
 func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, limit int) {
 	handler, _ := dt.transport.GetVnodeHandler(vnode)
 	if handler == nil {
