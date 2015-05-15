@@ -292,7 +292,7 @@ func (vn *localVnode) updateRemoteSuccessors() {
 			changed = true
 		} else if remote != nil && old_remotes[idx] == nil {
 			vn.remote_successors[idx] = remote
-			changed_true
+			changed = true
 		} else {
 			// we're good
 		}
