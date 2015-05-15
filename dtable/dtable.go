@@ -312,6 +312,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, d
 	}
 
 	// replicas have been written, lets now update metadata
+	replication_success := true
 	for idx, replica := range item_replicas {
 		rval := &rvalue{
 			depth:         idx,
@@ -321,8 +322,13 @@ func (dt *DTable) set(vn *dendrite.Vnode, key []byte, val *value, minAcks int, d
 		}
 		err := dt.remoteSetMeta(replica, key, rval)
 		if err != nil {
+			replication_success = false
 			break
 		}
+	}
+	if replication_success {
+		val.replicaVnodes = item_replicas
+		localCommit(vn_table, key_str, val)
 	}
 	if !returned {
 		localCommit(vn_table, key_str, val)
