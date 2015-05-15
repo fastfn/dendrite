@@ -113,63 +113,11 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 // it is asumed this method is called from origin vnode
 func (vn *localVnode) FindRemoteSuccessors(limit int) ([]*Vnode, error) {
 	remote_succs := make([]*Vnode, 0)
-	seen_vnodes := make(map[string]bool)
-	seen_hosts := make(map[string]bool)
-	seen_vnodes[vn.String()] = true
-	seen_hosts[vn.Host] = true
-	var pivot_succ *Vnode
-
-	for _, succ := range vn.successors {
-		if len(remote_succs) == limit {
-			return remote_succs, nil
-		}
+	for _, succ := range vn.remote_successors {
 		if succ == nil {
 			continue
 		}
-		seen_vnodes[succ.String()] = true
-		pivot_succ = succ
-		if _, ok := seen_hosts[succ.Host]; ok {
-			continue
-		}
-		if succ.Host == vn.Host {
-			continue
-		}
-		seen_hosts[succ.Host] = true
 		remote_succs = append(remote_succs, succ)
-	}
-
-	// forward through pivot successor until we reach the limit or detect loopback
-	for {
-		if len(remote_succs) == limit {
-			return remote_succs, nil
-		}
-		if pivot_succ == nil {
-			return remote_succs, nil
-		}
-		next_successors, err := vn.ring.transport.FindSuccessors(pivot_succ, vn.ring.config.NumSuccessors, pivot_succ.Id)
-		if err != nil {
-			return nil, err
-		}
-		for _, succ := range next_successors {
-			if len(remote_succs) == limit {
-				return remote_succs, nil
-			}
-			if succ == nil {
-				continue
-			}
-			if _, ok := seen_vnodes[succ.String()]; ok {
-				// loop detected, must return
-				return remote_succs, nil
-			}
-			seen_vnodes[succ.String()] = true
-			pivot_succ = succ
-			if _, ok := seen_hosts[succ.Host]; ok {
-				// we have this host already
-				continue
-			}
-			seen_hosts[succ.Host] = true
-			remote_succs = append(remote_succs, succ)
-		}
 	}
 	return remote_succs, nil
 }
