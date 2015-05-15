@@ -318,11 +318,9 @@ func (r *Ring) RegisterDelegateHook(dh DelegateHook) {
 type RingEventType int
 
 var (
-	EvPredecessorJoined    RingEventType = 1
-	EvPredecessorLeft      RingEventType = 2
-	EvSuccessorListChanged RingEventType = 3
-	EvSuccessorChanged     RingEventType = 4
-	EvError                RingEventType = 5
+	EvPredecessorJoined RingEventType = 1
+	EvPredecessorLeft   RingEventType = 2
+	EvReplicasChanged   RingEventType = 3
 )
 
 type EventCtx struct {

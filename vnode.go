@@ -23,15 +23,16 @@ func (vn *Vnode) String() string {
 // local Vnode
 type localVnode struct {
 	Vnode
-	ring            *Ring
-	successors      []*Vnode // "backlog" of known successors
-	finger          []*Vnode
-	last_finger     int
-	predecessor     *Vnode
-	old_predecessor *Vnode
-	stabilized      time.Time
-	timer           *time.Timer
-	delegateMux     sync.Mutex
+	ring              *Ring
+	successors        []*Vnode // "backlog" of known successors
+	remote_successors []*Vnode
+	finger            []*Vnode
+	last_finger       int
+	predecessor       *Vnode
+	old_predecessor   *Vnode
+	stabilized        time.Time
+	timer             *time.Timer
+	delegateMux       sync.Mutex
 }
 
 func (vn *localVnode) init(idx int) {
@@ -42,6 +43,7 @@ func (vn *localVnode) init(idx int) {
 	vn.Id = hash.Sum(nil)
 	vn.Host = vn.ring.config.Hostname
 	vn.successors = make([]*Vnode, vn.ring.config.NumSuccessors)
+	vn.remote_successors = make([]*Vnode, vn.ring.config.Replicas)
 	vn.finger = make([]*Vnode, 160) // keyspace size is 160 with SHA1
 	vn.ring.transport.Register(&vn.Vnode, vn)
 }
@@ -127,6 +129,7 @@ func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 
 // Check if there's new successor ahead
 func (vn *localVnode) checkNewSuccessor() error {
+	update_remotes := false
 	for {
 		if vn.successors[0] == nil {
 			log.Fatal("Node has no more successors :(")
@@ -136,6 +139,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 		if err != nil {
 			log.Println("[stabilize]... trying next known successor due to error:", err)
 			copy(vn.successors[0:], vn.successors[1:])
+			update_remotes = true
 			continue
 		}
 
@@ -144,6 +148,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 			if alive {
 				copy(vn.successors[1:], vn.successors[0:len(vn.successors)-1])
 				vn.successors[0] = maybe_suc
+				update_remotes = true
 				log.Printf("[stabilize] new successor set: %X -> %X\n", vn.Id, maybe_suc.Id)
 			} else {
 				// skip this one, it's not alive
@@ -164,13 +169,21 @@ func (vn *localVnode) checkNewSuccessor() error {
 		if !alive {
 			//log.Printf("found inactive successor, removing it: %X\n", vn.successors[i].Id)
 			copy(vn.successors[i:], vn.successors[i+1:])
+			update_remotes = true
 		}
+	}
+
+	// update remote successors if our list changed
+	if update_remotes {
+		vn.updateRemoteSuccessors()
 	}
 	return nil
 }
 
 // Notifies our successor of us, updates successor list
 func (vn *localVnode) notifySuccessor() error {
+	old_successors := make([]*Vnode, 0)
+	copy(old_successors, vn.successors)
 	// Notify successor
 	succ := vn.successors[0]
 	//log.Printf("Notifying successor of us: %X -> %X\n", vn.Id, succ.Id)
@@ -196,6 +209,14 @@ func (vn *localVnode) notifySuccessor() error {
 		}
 		//fmt.Printf("Updating successor from notifySuccessor(), %X -> %X\n", vn.Id, s.Id)
 		vn.successors[idx+1] = s
+	}
+	// lets see if our successor list changed
+	for idx, new_succ := range vn.successors {
+		if bytes.Compare(new_succ.Id, old_successors[idx].Id) != 0 {
+			// changed! we should update our remotes now
+			vn.updateRemoteSuccessors()
+			break
+		}
 	}
 	return nil
 }
@@ -246,4 +267,111 @@ func (vn *localVnode) fixFingerTable() error {
 		//log.Printf("\t\t\t set id: %X\n", succs[0].Id)
 	}
 	return nil
+}
+
+// updateRemoteSuccessors()
+func (vn *localVnode) updateRemoteSuccessors() {
+	old_remotes := make([]*Vnode, 0)
+	copy(old_remotes, vn.remote_successors)
+
+	remotes, err := vn.findRemoteSuccessors(vn.ring.Replicas())
+	if err != nil {
+		log.Println("Error finding remote successors:", err)
+		return
+	}
+
+	changed := false
+	for idx, remote := range remotes {
+		if remote != nil && old_remotes[idx] != nil {
+			if bytes.Compare(remote.Id, old_remotes[idx].Id) != 0 {
+				vn.remote_successors[idx] = remote
+				changed = true
+			}
+		} else if remote == nil && old_remotes[idx] != nil {
+			vn.remote_successors[idx] = remote
+			changed = true
+		} else if remote != nil && old_remotes[idx] == nil {
+			vn.remote_successors[idx] = remote
+			changed_true
+		} else {
+			// we're good
+		}
+	}
+	if changed {
+		ctx := &EventCtx{
+			EvType:   EvReplicasChanged,
+			Target:   &vn.Vnode,
+			ItemList: vn.remote_successors,
+		}
+		vn.ring.emit(ctx)
+	}
+}
+
+// findRemoteSuccessors returns up to 'limit' successor vnodes,
+// that are uniq and do not reside on same physical node as vnode
+// it is asumed this method is called from origin vnode
+func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
+	remote_succs := make([]*Vnode, limit)
+	seen_vnodes := make(map[string]bool)
+	seen_hosts := make(map[string]bool)
+	seen_vnodes[vn.String()] = true
+	seen_hosts[vn.Host] = true
+	var pivot_succ *Vnode
+	num_appended := 0
+
+	for _, succ := range vn.successors {
+		if num_appended == limit {
+			return remote_succs, nil
+		}
+		if succ == nil {
+			continue
+		}
+		seen_vnodes[succ.String()] = true
+		pivot_succ = succ
+		if _, ok := seen_hosts[succ.Host]; ok {
+			continue
+		}
+		if succ.Host == vn.Host {
+			continue
+		}
+		seen_hosts[succ.Host] = true
+		remote_succs = append(remote_succs, succ)
+		num_appended += 1
+	}
+
+	// forward through pivot successor until we reach the limit or detect loopback
+	for {
+		if num_appended == limit {
+			return remote_succs, nil
+		}
+		if pivot_succ == nil {
+			return remote_succs, nil
+		}
+		next_successors, err := vn.ring.transport.FindSuccessors(pivot_succ, vn.ring.config.NumSuccessors, pivot_succ.Id)
+		if err != nil {
+			return nil, err
+		}
+		for _, succ := range next_successors {
+			if num_appended == limit {
+				return remote_succs, nil
+			}
+			if succ == nil {
+				continue
+			}
+			if _, ok := seen_vnodes[succ.String()]; ok {
+				// loop detected, must return
+				return remote_succs, nil
+			}
+			seen_vnodes[succ.String()] = true
+			pivot_succ = succ
+			if _, ok := seen_hosts[succ.Host]; ok {
+				// we have this host already
+				continue
+			}
+			seen_hosts[succ.Host] = true
+			remote_succs = append(remote_succs, succ)
+			num_appended += 1
+		}
+	}
+	return remote_succs, nil
 }

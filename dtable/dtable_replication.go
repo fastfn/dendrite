@@ -194,7 +194,6 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 					log.Println("Error demoting key to new predecessor -", err)
 					continue
 				}
-
 			}
 		}
 	}
