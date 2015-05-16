@@ -182,7 +182,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 
 // Notifies our successor of us, updates successor list
 func (vn *localVnode) notifySuccessor() error {
-	old_successors := make([]*Vnode, 0)
+	old_successors := make([]*Vnode, len(vn.successors))
 	copy(old_successors, vn.successors)
 	// Notify successor
 	succ := vn.successors[0]
@@ -212,6 +212,13 @@ func (vn *localVnode) notifySuccessor() error {
 	}
 	// lets see if our successor list changed
 	for idx, new_succ := range vn.successors {
+		if (new_succ == nil && old_successors[idx] != nil) ||
+			(new_succ != nil && old_successors[idx] == nil) {
+			vn.updateRemoteSuccessors()
+		}
+		if new_succ == nil && old_successors[idx] == nil {
+			continue
+		}
 		if bytes.Compare(new_succ.Id, old_successors[idx].Id) != 0 {
 			// changed! we should update our remotes now
 			vn.updateRemoteSuccessors()

@@ -101,11 +101,18 @@ func (item *kvItem) to_demoted(new_master *dendrite.Vnode) *demotedKvItem {
 }
 func (item *kvItem) dup() *kvItem {
 	new_item := new(kvItem)
-	copy(new_item.Key, item.Key)
-	copy(new_item.Val, item.Val)
 	new_item.timestamp = item.timestamp
-	copy(new_item.keyHash, item.keyHash)
 	new_item.commited = item.commited
+
+	new_item.Key = make([]byte, len(item.Key))
+	copy(new_item.Key, item.Key)
+
+	new_item.Val = make([]byte, len(item.Val))
+	copy(new_item.Val, item.Val)
+
+	new_item.keyHash = make([]byte, len(item.keyHash))
+	copy(new_item.keyHash, item.keyHash)
+
 	if item.replicaInfo != nil {
 		new_item.replicaInfo = new(kvReplicaInfo)
 		new_item.replicaInfo.master = item.replicaInfo.master

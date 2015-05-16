@@ -180,7 +180,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 
 // Get() returns value for a given key
 func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
-	succs, err := dt.ring.Lookup(3, reqItem.Key)
+	succs, err := dt.ring.Lookup(3, reqItem.keyHash)
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +190,7 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 	if ok {
 		key_str := reqItem.keyHashString()
 		if item, exists := vn_table[key_str]; exists {
-			copy(reqItem.Val, item.Val)
-			return reqItem, nil
+			return item.dup(), nil
 		} else {
 			return nil, fmt.Errorf("not found")
 		}
@@ -239,8 +238,8 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	vn_table, _ := dt.table[vn.String()]
 	key_str := item.keyHashString()
 
-	item.lock.Lock()
-	defer item.lock.Unlock()
+	//item.lock.Lock()
+	//defer item.lock.Unlock()
 
 	// see if key exists with older timestamp
 	if oldItem, ok := vn_table[key_str]; ok {
@@ -352,8 +351,8 @@ func (dt *DTable) DumpStr() {
 	fmt.Println("Dumping DTABLE")
 	for vn_id, vn_table := range dt.table {
 		fmt.Printf("\tvnode: %s\n", vn_id)
-		for key, val := range vn_table {
-			fmt.Printf("\t\t%s - %s - %v\n", key, val.Val, val.commited)
+		for key, item := range vn_table {
+			fmt.Printf("\t\t%s - %s - %v\n", key, item.Val, item.commited)
 		}
 		rt, _ := dt.rtable[vn_id]
 		for key, item := range rt {

@@ -102,7 +102,7 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 			continue
 		}
 		// check if we're real successor for this key
-		succs, err := dt.ring.Lookup(1, ritem.Key)
+		succs, err := dt.ring.Lookup(1, ritem.keyHash)
 		if err != nil {
 			log.Printf("Could not promote key, Lookup() failed: %s\n", err.Error())
 			continue

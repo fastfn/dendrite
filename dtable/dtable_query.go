@@ -48,29 +48,32 @@ func (q *Query) Get(key []byte) (*KVItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	rv := &KVItem{
-		Key: key,
-	}
-	rv.Val = make([]byte, len(item.Val))
-	copy(rv.Val, item.Val)
-	return rv, nil
+	return &item.KVItem, nil
 }
 
 func (q *Query) Set(key, val []byte) error {
 	q.qType = qSet
 	reqItem := new(kvItem)
-	reqItem.Key = key
+
+	reqItem.Key = make([]byte, len(key))
+	copy(reqItem.Key, key)
+
+	if val != nil {
+		reqItem.Val = make([]byte, len(val))
+		copy(reqItem.Val, val)
+	}
+
 	reqItem.keyHash = dendrite.HashKey(key)
 	reqItem.timestamp = time.Now()
-	reqItem.replicaInfo = nil
+	reqItem.replicaInfo = new(kvReplicaInfo)
 
 	wait := make(chan error)
-	succs, err := q.dt.ring.Lookup(1, reqItem.Key)
+	succs, err := q.dt.ring.Lookup(1, reqItem.keyHash)
 	if err != nil {
 		return err
 	}
 	if len(succs) != 1 || succs[0] == nil {
-		return fmt.Errorf("successor lookup failed for key, %x", reqItem.Key)
+		return fmt.Errorf("successor lookup failed for key, %x", reqItem.keyHash)
 	}
 	// see if this node is responsible for this key
 	_, ok := q.dt.table[succs[0].String()]
@@ -83,33 +86,3 @@ func (q *Query) Set(key, val []byte) error {
 	err = <-wait
 	return err
 }
-
-/*
-func (q *Query) Exec() ([]byte, error) {
-	switch q.qType {
-	case qGet:
-		return q.dt.get(q.key)
-	case qSet:
-		wait := make(chan error)
-		succs, err := q.dt.ring.Lookup(1, q.orig_key)
-		if err != nil {
-			return nil, err
-		}
-		if len(succs) != 1 || succs[0] == nil {
-			return nil, fmt.Errorf("successor lookup failed for key, %x", q.key)
-		}
-		// see if this node is responsible for this key
-		_, ok := q.dt.table[succs[0].String()]
-		if ok {
-			go q.dt.set(succs[0], q.key, q.val, q.minAcks, wait)
-		} else {
-			// pass to remote
-			go q.dt.remoteSet(succs[0], succs[0], q.key, q.val, q.minAcks, false, wait)
-		}
-		err = <-wait
-		return nil, err
-	default:
-		return nil, fmt.Errorf("unknown query")
-	}
-}
-*/

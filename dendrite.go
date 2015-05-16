@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	//"log"
-	"crypto/sha1"
 	"sort"
 	"time"
 )
@@ -128,22 +127,17 @@ func (r *Ring) MaxStabilize() time.Duration {
 }
 
 // Does a key lookup for up to N successors of a key
-func (r *Ring) Lookup(n int, key []byte) ([]*Vnode, error) {
+func (r *Ring) Lookup(n int, keyHash []byte) ([]*Vnode, error) {
 	// Ensure that n is sane
 	if n > r.config.NumSuccessors {
 		return nil, fmt.Errorf("Cannot ask for more successors than NumSuccessors!")
 	}
 
-	// Hash the key
-	hash := sha1.New()
-	hash.Write(key)
-	key_hash := hash.Sum(nil)
-
 	// Find the nearest local vnode
-	nearest := nearestVnodeToKey(r.vnodes, key_hash)
+	nearest := nearestVnodeToKey(r.vnodes, keyHash)
 
 	// Use the nearest node for the lookup
-	successors, err := r.transport.FindSuccessors(nearest, n, key_hash)
+	successors, err := r.transport.FindSuccessors(nearest, n, keyHash)
 	if err != nil {
 		return nil, err
 	}
