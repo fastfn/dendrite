@@ -14,6 +14,61 @@ func (item *kvItem) keyHashString() string {
 	return fmt.Sprintf("%x", item.keyHash)
 }
 
+func (rinfo *kvReplicaInfo) to_protobuf() *PBDTableReplicaInfo {
+	pb_master := &dendrite.PBProtoVnode{
+		Host: proto.String(rinfo.master.Host),
+		Id:   rinfo.master.Id,
+	}
+	pb_vnodes := make([]*dendrite.PBProtoVnode, 0)
+	for _, rvn := range rinfo.vnodes {
+		pb_vnodes = append(pb_vnodes, &dendrite.PBProtoVnode{
+			Host: proto.String(rvn.Host),
+			Id:   rvn.Id,
+		})
+	}
+	pb_orphanVnodes := make([]*dendrite.PBProtoVnode, 0)
+	for _, ovn := range rinfo.orphan_vnodes {
+		pb_orphanVnodes = append(pb_orphanVnodes, &dendrite.PBProtoVnode{
+			Host: proto.String(ovn.Host),
+			Id:   ovn.Id,
+		})
+	}
+	return &PBDTableReplicaInfo{
+		Master:       pb_master,
+		Vnodes:       pb_vnodes,
+		OrphanVnodes: pb_orphanVnodes,
+		State:        proto.Int32(int32(rinfo.state)),
+		Depth:        proto.Int32(int32(rinfo.depth)),
+	}
+}
+
+func replicaInfo_from_protobuf(pb *PBDTableReplicaInfo) *kvReplicaInfo {
+	if pb == nil {
+		return nil
+	}
+	rInfo := new(kvReplicaInfo)
+	rInfo.master = &dendrite.Vnode{
+		Id:   pb.GetMaster().GetId(),
+		Host: pb.GetMaster().GetHost(),
+	}
+	rInfo.vnodes = make([]*dendrite.Vnode, 0)
+	for _, pb_vnode := range pb.GetVnodes() {
+		rInfo.vnodes = append(rInfo.vnodes, &dendrite.Vnode{
+			Id:   pb_vnode.GetId(),
+			Host: pb_vnode.GetHost(),
+		})
+	}
+	rInfo.orphan_vnodes = make([]*dendrite.Vnode, 0)
+	for _, pb_orphanVnode := range pb.GetOrphanVnodes() {
+		rInfo.orphan_vnodes = append(rInfo.orphan_vnodes, &dendrite.Vnode{
+			Id:   pb_orphanVnode.GetId(),
+			Host: pb_orphanVnode.GetHost(),
+		})
+	}
+	rInfo.state = replicaState(int(pb.GetState()))
+	rInfo.depth = int(pb.GetDepth())
+	return rInfo
+}
 func (item *kvItem) to_protobuf() *PBDTableItem {
 	rv := &PBDTableItem{
 		Key:       item.Key,
@@ -23,32 +78,7 @@ func (item *kvItem) to_protobuf() *PBDTableItem {
 		Commited:  proto.Bool(item.commited),
 	}
 	if item.replicaInfo != nil {
-		pb_master := &dendrite.PBProtoVnode{
-			Host: proto.String(item.replicaInfo.master.Host),
-			Id:   item.replicaInfo.master.Id,
-		}
-		pb_vnodes := make([]*dendrite.PBProtoVnode, 0)
-		for _, rvn := range item.replicaInfo.vnodes {
-			pb_vnodes = append(pb_vnodes, &dendrite.PBProtoVnode{
-				Host: proto.String(rvn.Host),
-				Id:   rvn.Id,
-			})
-		}
-		pb_orphanVnodes := make([]*dendrite.PBProtoVnode, 0)
-		for _, ovn := range item.replicaInfo.orphan_vnodes {
-			pb_orphanVnodes = append(pb_orphanVnodes, &dendrite.PBProtoVnode{
-				Host: proto.String(ovn.Host),
-				Id:   ovn.Id,
-			})
-		}
-		pb_replicaInfo := &PBDTableReplicaInfo{
-			Master:       pb_master,
-			Vnodes:       pb_vnodes,
-			OrphanVnodes: pb_orphanVnodes,
-			State:        proto.Int32(int32(item.replicaInfo.state)),
-			Depth:        proto.Int32(int32(item.replicaInfo.depth)),
-		}
-		rv.ReplicaInfo = pb_replicaInfo
+		rv.ReplicaInfo = item.replicaInfo.to_protobuf()
 	}
 	return rv
 }
@@ -59,30 +89,7 @@ func (item *kvItem) from_protobuf(pb *PBDTableItem) {
 	item.timestamp = time.Unix(0, pb.GetTimestamp())
 	item.keyHash = pb.GetKeyHash()
 	item.commited = pb.GetCommited()
-	pb_replicaInfo := pb.GetReplicaInfo()
-	if pb_replicaInfo != nil {
-		item.replicaInfo = new(kvReplicaInfo)
-		item.replicaInfo.master = &dendrite.Vnode{
-			Id:   pb_replicaInfo.GetMaster().GetId(),
-			Host: pb_replicaInfo.GetMaster().GetHost(),
-		}
-		item.replicaInfo.vnodes = make([]*dendrite.Vnode, 0)
-		for _, pb_vnode := range pb_replicaInfo.GetVnodes() {
-			item.replicaInfo.vnodes = append(item.replicaInfo.vnodes, &dendrite.Vnode{
-				Id:   pb_vnode.GetId(),
-				Host: pb_vnode.GetHost(),
-			})
-		}
-		item.replicaInfo.orphan_vnodes = make([]*dendrite.Vnode, 0)
-		for _, pb_orphanVnode := range pb_replicaInfo.GetOrphanVnodes() {
-			item.replicaInfo.orphan_vnodes = append(item.replicaInfo.orphan_vnodes, &dendrite.Vnode{
-				Id:   pb_orphanVnode.GetId(),
-				Host: pb_orphanVnode.GetHost(),
-			})
-		}
-		item.replicaInfo.state = replicaState(int(pb_replicaInfo.GetState()))
-		item.replicaInfo.depth = int(pb_replicaInfo.GetDepth())
-	}
+	item.replicaInfo = replicaInfo_from_protobuf(pb.GetReplicaInfo())
 }
 
 func (item *kvItem) to_demoted(new_master *dendrite.Vnode) *demotedKvItem {

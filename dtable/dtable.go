@@ -153,6 +153,14 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		}
 		cm.TransportMsg = dtableClearReplicaMsg
 		cm.TransportHandler = dt.zmq_clearreplica_handler
+	case PbDtableSetReplica:
+		var dtableSetReplicaMsg PBDTableSetItem
+		err := proto.Unmarshal(cm.Data, &dtableSetReplicaMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableSetReplica message - %s - %+v", err, cm.Data)
+		}
+		cm.TransportMsg = dtableSetReplicaMsg
+		cm.TransportHandler = dt.zmq_setReplica_handler
 	case PbDtableResponse:
 		var dtableResponseMsg PBDTableResponse
 		err := proto.Unmarshal(cm.Data, &dtableResponseMsg)
@@ -371,7 +379,7 @@ func localCommit(vn_table map[string]*value, key_str string, val *value) {
 // AFTER we took over the key and built new replicas
 // here we clear old replicas if necessary
 // at the end, we make a call to origin (old primary for this key) to clear demotedItem there
-func (dt *DTable) processDemoteKey(vnode, origin *dendrite.Vnode, reqItem *kvItem, oldReplicas []*dendrite.Vnode) {
+func (dt *DTable) processDemoteKey(vnode, origin *dendrite.Vnode, reqItem, origItem *kvItem) {
 	// find the key in our primary table
 	key_str := reqItem.keyHashString()
 	if item, ok := dt.table[vnode.String()][key_str]; ok {
@@ -379,7 +387,7 @@ func (dt *DTable) processDemoteKey(vnode, origin *dendrite.Vnode, reqItem *kvIte
 		// replica depth is already updated across replicas when we wrote key to primary table
 		// if oldReplica.Id is not listed in active replicas - we need to remove that replica
 	OLD:
-		for _, oldReplica := range oldReplicas {
+		for _, oldReplica := range origItem.replicaInfo.vnodes {
 			for _, replica := range item.replicaInfo.vnodes {
 				if bytes.Compare(replica.Id, oldReplica.Id) == 0 {
 					continue OLD

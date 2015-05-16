@@ -267,8 +267,7 @@ type PBDTableSetItem struct {
 	Item             *PBDTableItem          `protobuf:"bytes,2,req,name=item" json:"item,omitempty"`
 	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
 	Demoting         *bool                  `protobuf:"varint,4,opt,name=demoting" json:"demoting,omitempty"`
-	IsReplica        *bool                  `protobuf:"varint,5,opt,name=isReplica" json:"isReplica,omitempty"`
-	MinAcks          *int32                 `protobuf:"varint,6,opt,name=minAcks" json:"minAcks,omitempty"`
+	MinAcks          *int32                 `protobuf:"varint,5,opt,name=minAcks" json:"minAcks,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -300,13 +299,6 @@ func (m *PBDTableSetItem) GetOrigin() *dendrite.PBProtoVnode {
 func (m *PBDTableSetItem) GetDemoting() bool {
 	if m != nil && m.Demoting != nil {
 		return *m.Demoting
-	}
-	return false
-}
-
-func (m *PBDTableSetItem) GetIsReplica() bool {
-	if m != nil && m.IsReplica != nil {
-		return *m.IsReplica
 	}
 	return false
 }

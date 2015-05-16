@@ -47,8 +47,7 @@ message PBDTableSetItem {
 	required PBDTableItem item = 2;
 	optional dendrite.PBProtoVnode origin = 3;
 	optional bool demoting = 4;
-	optional bool isReplica = 5;
-	optional int32 minAcks = 6;
+	optional int32 minAcks = 5;
 }
 
 message PBDTableSetMultiItem {

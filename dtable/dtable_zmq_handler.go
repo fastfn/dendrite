@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
-	"time"
 	//"log"
 )
 
@@ -27,14 +26,18 @@ func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		return
 	}
 	key_str := fmt.Sprintf("%x", keyHash)
-	itemResp := &PBDTableItem{
-		Found: proto.Bool(false),
-		Value: nil,
-	}
+
+	var itemResp *PBDTableItem
+
 	if localItem, ok := vn_table[key_str]; ok {
+		itemResp = localItem.to_protobuf()
 		itemResp.Found = proto.Bool(true)
-		itemResp.Val = localItem.Val
+	} else {
+		itemResp = &PBDTableItem{
+			Found: proto.Bool(false),
+		}
 	}
+
 	// encode and send the response
 	pbdata, err := proto.Marshal(itemResp)
 	if err != nil {
@@ -50,10 +53,10 @@ func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 }
 
 func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
-	pbMsg := request.TransportMsg.(PBDTableSet)
-	key := pbMsg.GetKey()
-	val := pbMsg.GetVal()
-	isReplica := pbMsg.GetIsReplica()
+	pbMsg := request.TransportMsg.(PBDTableSetItem)
+	reqItem := new(kvItem)
+	reqItem.from_protobuf(pbMsg.GetItem())
+	orig_item := reqItem.dup()
 	demoting := pbMsg.GetDemoting()
 	minAcks := int(pbMsg.GetMinAcks())
 	dest := &dendrite.Vnode{
@@ -76,50 +79,24 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		w <- errorMsg
 		return
 	}
-	key_str := fmt.Sprintf("%x", key)
-	setResp := &PBDTableSetResp{
+	setResp := &PBDTableResponse{
 		Ok: proto.Bool(false),
 	}
-	var demote_value *value
-	if isReplica {
-		new_rval := &rvalue{
-			timestamp: time.Now(),
-			Val:       val,
-			state:     replicaIncomplete,
-		}
-		dt.setReplica(dest, key_str, new_rval)
-		setResp.Ok = proto.Bool(true)
+
+	wait := make(chan error)
+	go dt.set(dest, reqItem, minAcks, wait)
+	err := <-wait
+	if err != nil {
+		setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
+		success = false
 	} else {
-		new_val := &value{
-			timestamp: time.Now(),
-			Val:       val,
-			isReplica: false,
-			commited:  false,
-			rstate:    replicaIncomplete,
-		}
-		demote_value = new_val
-		wait := make(chan error)
-		go dt.set(dest, key, new_val, minAcks, wait)
-		err := <-wait
-		if err != nil {
-			setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
-			success = false
-		} else {
-			setResp.Ok = proto.Bool(true)
-		}
+		setResp.Ok = proto.Bool(true)
 	}
 
 	// trigger demote callback if everything's good
 	// processDemoteKey will rearange replicas if necessary
 	if success && demoting {
-		replica_vnodes := make([]*dendrite.Vnode, 0)
-		for _, pbrepVnode := range pbMsg.GetReplicaVnodes() {
-			replica_vnodes = append(replica_vnodes, &dendrite.Vnode{
-				Id:   pbrepVnode.GetId(),
-				Host: pbrepVnode.GetHost(),
-			})
-		}
-		go dt.processDemoteKey(dest, origin, key, demote_value, replica_vnodes)
+		go dt.processDemoteKey(dest, origin, reqItem, orig_item)
 	}
 	// encode and send the response
 	pbdata, err := proto.Marshal(setResp)
@@ -129,7 +106,46 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		return
 	}
 	w <- &dendrite.ChordMsg{
-		Type: PbDtableSetResp,
+		Type: PbDtableResponse,
+		Data: pbdata,
+	}
+
+	return
+}
+
+func (dt *DTable) zmq_setReplica_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
+	pbMsg := request.TransportMsg.(PBDTableSetItem)
+	reqItem := new(kvItem)
+	reqItem.from_protobuf(pbMsg.GetItem())
+
+	dest := &dendrite.Vnode{
+		Id:   pbMsg.GetDest().GetId(),
+		Host: pbMsg.GetDest().GetHost(),
+	}
+
+	dest_key_str := fmt.Sprintf("%x", dest.Id)
+	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+	// make sure destination vnode exists locally
+	_, ok := dt.table[dest_key_str]
+	if !ok {
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetReplicaHandler - local vnode table not found")
+		w <- errorMsg
+		return
+	}
+	setResp := &PBDTableResponse{
+		Ok: proto.Bool(true),
+	}
+	dt.setReplica(dest, reqItem)
+
+	// encode and send the response
+	pbdata, err := proto.Marshal(setResp)
+	if err != nil {
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetReplicaHandler - failed to marshal response - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	w <- &dendrite.ChordMsg{
+		Type: PbDtableResponse,
 		Data: pbdata,
 	}
 
@@ -137,22 +153,9 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 }
 
 func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
-	pbMsg := request.TransportMsg.(PBDTableSetMeta)
-	key := pbMsg.GetKey()
-	state := pbMsg.GetState()
-	master := &dendrite.Vnode{
-		Id:   pbMsg.GetMaster().GetId(),
-		Host: pbMsg.GetMaster().GetHost(),
-	}
-	depth := pbMsg.GetDepth()
-	replica_vnodes := make([]*dendrite.Vnode, 0)
-	for _, pbrepVnode := range pbMsg.GetReplicaVnodes() {
-		replica_vnodes = append(replica_vnodes, &dendrite.Vnode{
-			Id:   pbrepVnode.GetId(),
-			Host: pbrepVnode.GetHost(),
-		})
-	}
-
+	pbMsg := request.TransportMsg.(PBDTableSetReplicaInfo)
+	rInfo := replicaInfo_from_protobuf(pbMsg.GetReplicaInfo())
+	keyHash := pbMsg.GetKeyHash()
 	dest := &dendrite.Vnode{
 		Id:   pbMsg.GetDest().GetId(),
 		Host: pbMsg.GetDest().GetHost(),
@@ -168,21 +171,17 @@ func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan 
 		w <- errorMsg
 		return
 	}
-	key_str := fmt.Sprintf("%x", key)
+	key_str := fmt.Sprintf("%x", keyHash)
 	item, ok := vn_table[key_str]
 	if !ok {
 		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetMetaHandler - key not found")
 		w <- errorMsg
 		return
 	}
+	item.replicaInfo = rInfo
 
-	item.state = replicaState(state)
-	item.master = master
-	item.depth = int(depth)
-	item.replicaVnodes = replica_vnodes
-	vn_table[key_str] = item
 	// encode and send the response
-	setResp := &PBDTableSetResp{
+	setResp := &PBDTableResponse{
 		Ok: proto.Bool(true),
 	}
 	pbdata, err := proto.Marshal(setResp)
@@ -192,7 +191,7 @@ func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan 
 		return
 	}
 	w <- &dendrite.ChordMsg{
-		Type: PbDtableSetResp,
+		Type: PbDtableResponse,
 		Data: pbdata,
 	}
 	return
@@ -200,7 +199,7 @@ func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan 
 
 func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableClearReplica)
-	key := pbMsg.GetKey()
+	keyHash := pbMsg.GetKeyHash()
 	demoted := pbMsg.GetDemoted()
 	dest := &dendrite.Vnode{
 		Id:   pbMsg.GetDest().GetId(),
@@ -217,7 +216,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 		return
 	}
 
-	key_str := fmt.Sprintf("%x", key)
+	key_str := fmt.Sprintf("%x", keyHash)
 	if demoted {
 		d_table, _ := dt.demoted_table[dest_key_str]
 		if _, ok := d_table[key_str]; ok {
@@ -238,7 +237,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 	}
 
 	// encode and send the response
-	setResp := &PBDTableSetResp{
+	setResp := &PBDTableResponse{
 		Ok: proto.Bool(true),
 	}
 	pbdata, err := proto.Marshal(setResp)
@@ -248,7 +247,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 		return
 	}
 	w <- &dendrite.ChordMsg{
-		Type: PbDtableSetResp,
+		Type: PbDtableResponse,
 		Data: pbdata,
 	}
 	return

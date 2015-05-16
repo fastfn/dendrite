@@ -207,7 +207,6 @@ func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite
 	vn_table := dt.table[vnode.String()]
 	new_replica_len := len(new_replicas)
 
-KEY_LOOP:
 	for key_str, item := range vn_table {
 		success_replicas := make([]*dendrite.Vnode, 0)
 		last_new_replica := 0
@@ -282,7 +281,6 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 		new_ritem.replicaInfo.state = replicaIncomplete
 		new_ritem.commited = false
 
-		done_c := make(chan error)
 		err := dt.remoteWriteReplica(vnode, succ, new_ritem)
 		if err != nil {
 			return
@@ -291,7 +289,6 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 	}
 
 	// replicas have been written, lets now update metadata
-	new_ritem := reqItem.dup()
 	for idx, replica := range item_replicas {
 		new_ritem := reqItem.dup()
 		new_ritem.replicaInfo.depth = idx

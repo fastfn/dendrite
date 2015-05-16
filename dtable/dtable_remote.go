@@ -127,12 +127,11 @@ func (dt *DTable) remoteSet(origin, remote *dendrite.Vnode, reqItem *kvItem, min
 		}
 
 		req := &PBDTableSetItem{
-			Origin:    origin,
-			Dest:      dest,
-			Item:      reqItem.to_protobuf(),
-			IsReplica: proto.Bool(false),
-			MinAcks:   proto.Int32(int32(minAcks)),
-			Demoting:  proto.Bool(demoting),
+			Origin:   origin,
+			Dest:     dest,
+			Item:     reqItem.to_protobuf(),
+			MinAcks:  proto.Int32(int32(minAcks)),
+			Demoting: proto.Bool(demoting),
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -383,11 +382,9 @@ func (dt *DTable) remoteWriteReplica(origin, remote *dendrite.Vnode, reqItem *kv
 			Id:   origin.Id,
 		}
 		req := &PBDTableSetItem{
-			Origin:    origin,
-			Dest:      dest,
-			Item:      reqItem.to_protobuf(),
-			IsReplica: proto.Bool(true),
-			Demoting:  proto.Bool(false),
+			Origin: origin,
+			Dest:   dest,
+			Item:   reqItem.to_protobuf(),
 		}
 
 		reqData, _ := proto.Marshal(req)
