@@ -6,6 +6,10 @@ message	PBDTableResponse {
 	optional string error = 2;
 }
 
+message	PBDTableStatus {
+	required dendrite.PBProtoVnode dest = 1;
+}
+
 message PBDTableReplicaInfo {
 	optional dendrite.PBProtoVnode master = 1;
 	repeated dendrite.PBProtoVnode vnodes = 2;

@@ -10,6 +10,7 @@ It is generated from these files:
 
 It has these top-level messages:
 	PBDTableResponse
+	PBDTableStatus
 	PBDTableReplicaInfo
 	PBDTableItem
 	PBDTableDemotedItem
@@ -52,6 +53,22 @@ func (m *PBDTableResponse) GetError() string {
 		return *m.Error
 	}
 	return ""
+}
+
+type PBDTableStatus struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableStatus) Reset()         { *m = PBDTableStatus{} }
+func (m *PBDTableStatus) String() string { return proto.CompactTextString(m) }
+func (*PBDTableStatus) ProtoMessage()    {}
+
+func (m *PBDTableStatus) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
 }
 
 type PBDTableReplicaInfo struct {

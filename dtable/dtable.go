@@ -13,15 +13,16 @@ import (
 type replicaState int
 
 const (
-	PbDtableResponse          dendrite.MsgType = 0x20 // generic response
-	PbDtableItem              dendrite.MsgType = 0x21 // single item response
-	PbDtableMultiItemResponse dendrite.MsgType = 0x22 // response with multiple items
-	PbDtableGetItem           dendrite.MsgType = 0x23 // getItem request
-	PbDtableSetItem           dendrite.MsgType = 0x24 // setItem request
-	PbDtableSetMultiItem      dendrite.MsgType = 0x25 // setMultiItem request
-	PbDtableClearReplica      dendrite.MsgType = 0x26 // clearReplica request
-	PbDtableSetReplica        dendrite.MsgType = 0x27 // setReplica request
-	PbDtableSetReplicaInfo    dendrite.MsgType = 0x28 // setReplicaInfo request
+	PbDtableStatus            dendrite.MsgType = 0x20 // status request to see if remote dtable is initialized
+	PbDtableResponse          dendrite.MsgType = 0x21 // generic response
+	PbDtableItem              dendrite.MsgType = 0x22 // single item response
+	PbDtableMultiItemResponse dendrite.MsgType = 0x23 // response with multiple items
+	PbDtableGetItem           dendrite.MsgType = 0x24 // getItem request
+	PbDtableSetItem           dendrite.MsgType = 0x25 // setItem request
+	PbDtableSetMultiItem      dendrite.MsgType = 0x26 // setMultiItem request
+	PbDtableClearReplica      dendrite.MsgType = 0x27 // clearReplica request
+	PbDtableSetReplica        dendrite.MsgType = 0x28 // setReplica request
+	PbDtableSetReplicaInfo    dendrite.MsgType = 0x29 // setReplicaInfo request
 
 	replicaStable     replicaState = 0 // all replicas commited
 	replicaPartial    replicaState = 1 // all available replicas commited but there's no enough remote nodes
@@ -114,6 +115,14 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 
 	// parse the data and set the handler
 	switch cm.Type {
+	case PbDtableStatus:
+		var dtableStatusMsg PBDTableStatus
+		err := proto.Unmarshal(cm.Data, &dtableStatusMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTableStatus message - %s", err)
+		}
+		cm.TransportMsg = dtableStatusMsg
+		cm.TransportHandler = dt.zmq_status_handler
 	case PbDtableGetItem:
 		var dtableGetItemMsg PBDTableGetItem
 		err := proto.Unmarshal(cm.Data, &dtableGetItemMsg)
@@ -248,6 +257,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 			if item.Val == nil {
 				delete(vn_table, key_str)
 			} else {
+				item.replicaInfo.master = vn
 				vn_table[key_str] = item
 			}
 		} else {
@@ -257,18 +267,21 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		}
 	} else {
 		if item.Val != nil {
+			item.replicaInfo.master = vn
 			vn_table[key_str] = item
 		}
 	}
 
 	write_count += 1
 	returned := false
+
 	// should we return to client immediately?
 	if minAcks == write_count {
 		if dt.ring.Replicas() == write_count {
 			item.replicaInfo.state = replicaStable
 			item.commited = true
 		}
+		log.Printf("Returning set to user because %d == %d\n", minAcks, write_count)
 		done <- nil
 		returned = true
 	}
@@ -300,6 +313,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		if repwrite_count+1 == minAcks && !returned {
 			returned = true
 			item.commited = true
+			log.Printf("Returning set to user because %d == %d == %d\n", repwrite_count+1, minAcks, write_count)
 			done <- nil
 		}
 		newItem := item.dup()

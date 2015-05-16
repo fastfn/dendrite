@@ -8,6 +8,41 @@ import (
 	//"log"
 )
 
+func (dt *DTable) zmq_status_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
+	pbMsg := request.TransportMsg.(PBDTableStatus)
+
+	dest := &dendrite.Vnode{
+		Id:   pbMsg.GetDest().GetId(),
+		Host: pbMsg.GetDest().GetHost(),
+	}
+
+	dest_key_str := fmt.Sprintf("%x", dest.Id)
+	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+
+	// make sure destination vnode exists locally
+	_, ok := dt.table[dest_key_str]
+	setResp := &PBDTableResponse{}
+	if !ok {
+		setResp.Ok = proto.Bool(false)
+		setResp.Error = proto.String("local dtable vnode not found")
+	} else {
+		setResp.Ok = proto.Bool(true)
+	}
+
+	// encode and send the response
+	pbdata, err := proto.Marshal(setResp)
+	if err != nil {
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::StatusHandler - failed to marshal response - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	w <- &dendrite.ChordMsg{
+		Type: PbDtableResponse,
+		Data: pbdata,
+	}
+	return
+}
+
 func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableGetItem)
 	keyHash := pbMsg.GetKeyHash()

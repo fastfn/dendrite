@@ -215,6 +215,7 @@ func (vn *localVnode) notifySuccessor() error {
 		if (new_succ == nil && old_successors[idx] != nil) ||
 			(new_succ != nil && old_successors[idx] == nil) {
 			vn.updateRemoteSuccessors()
+			break
 		}
 		if new_succ == nil && old_successors[idx] == nil {
 			continue
@@ -278,7 +279,7 @@ func (vn *localVnode) fixFingerTable() error {
 
 // updateRemoteSuccessors()
 func (vn *localVnode) updateRemoteSuccessors() {
-	old_remotes := make([]*Vnode, 0)
+	old_remotes := make([]*Vnode, vn.ring.Replicas())
 	copy(old_remotes, vn.remote_successors)
 
 	remotes, err := vn.findRemoteSuccessors(vn.ring.Replicas())
@@ -325,6 +326,7 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 	seen_hosts[vn.Host] = true
 	var pivot_succ *Vnode
 	num_appended := 0
+	next_pos := 0
 
 	for _, succ := range vn.successors {
 		if num_appended == limit {
@@ -342,8 +344,9 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 			continue
 		}
 		seen_hosts[succ.Host] = true
-		remote_succs = append(remote_succs, succ)
-		num_appended += 1
+		remote_succs[next_pos] = succ
+		next_pos++
+		num_appended++
 	}
 
 	// forward through pivot successor until we reach the limit or detect loopback
@@ -376,8 +379,9 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 				continue
 			}
 			seen_hosts[succ.Host] = true
-			remote_succs = append(remote_succs, succ)
-			num_appended += 1
+			remote_succs[next_pos] = succ
+			next_pos++
+			num_appended++
 		}
 	}
 	return remote_succs, nil
