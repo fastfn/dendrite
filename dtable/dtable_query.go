@@ -16,13 +16,11 @@ const (
 )
 
 type Query struct {
-	dt       *DTable
-	qType    queryType
-	minAcks  int
-	key      []byte
-	orig_key []byte
-	val      *value
-	err      error
+	dt      *DTable
+	qType   queryType
+	minAcks int
+	kvItem  *kvItem
+	err     error
 }
 
 func (dt *DTable) NewQuery() *Query {
@@ -41,26 +39,52 @@ func (q *Query) Consistency(n int) *Query {
 	return q
 }
 
-func (q *Query) Get(key []byte) *Query {
-	q.key = key
-	q.qType = qGet
-	return q
-}
+func (q *Query) Get(key []byte) (*KVItem, error) {
+	reqItem := new(kvItem)
+	reqItem.Key = key
+	reqItem.keyHash = dendrite.HashKey(key)
 
-func (q *Query) Set(key, val []byte) *Query {
-	q.key = dendrite.HashKey(key)
-	q.orig_key = key
-	q.val = &value{
-		Val:       val,
-		isReplica: false,
-		commited:  false,
-		rstate:    replicaIncomplete,
-		timestamp: time.Now(),
+	item, err := q.dt.get(reqItem)
+	if err != nil {
+		return nil, err
 	}
-	q.qType = qSet
-	return q
+	rv := &KVItem{
+		Key: key,
+	}
+	rv.Val = make([]byte, len(item.Val))
+	copy(rv.Val, item.Val)
+	return rv, nil
 }
 
+func (q *Query) Set(key, val []byte) error {
+	q.qType = qSet
+	reqItem := new(kvItem)
+	reqItem.Key = key
+	reqItem.keyHash = dendrite.HashKey(key)
+	reqItem.timestamp = time.Now()
+	reqItem.replicaInfo = nil
+
+	wait := make(chan error)
+	succs, err := q.dt.ring.Lookup(1, reqItem.Key)
+	if err != nil {
+		return err
+	}
+	if len(succs) != 1 || succs[0] == nil {
+		return fmt.Errorf("successor lookup failed for key, %x", reqItem.Key)
+	}
+	// see if this node is responsible for this key
+	_, ok := q.dt.table[succs[0].String()]
+	if ok {
+		go q.dt.set(succs[0], reqItem, q.minAcks, wait)
+	} else {
+		// pass to remote
+		go q.dt.remoteSet(succs[0], succs[0], reqItem, q.minAcks, false, wait)
+	}
+	err = <-wait
+	return err
+}
+
+/*
 func (q *Query) Exec() ([]byte, error) {
 	switch q.qType {
 	case qGet:
@@ -88,3 +112,4 @@ func (q *Query) Exec() ([]byte, error) {
 		return nil, fmt.Errorf("unknown query")
 	}
 }
+*/

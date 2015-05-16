@@ -10,8 +10,8 @@ import (
 )
 
 func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
-	pbMsg := request.TransportMsg.(PBDTableGet)
-	key := pbMsg.GetKey()
+	pbMsg := request.TransportMsg.(PBDTableGetItem)
+	keyHash := pbMsg.GetKeyHash()
 	dest := &dendrite.Vnode{
 		Id:   pbMsg.GetDest().GetId(),
 		Host: pbMsg.GetDest().GetHost(),
@@ -26,24 +26,24 @@ func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		w <- errorMsg
 		return
 	}
-	key_str := fmt.Sprintf("%x", key)
-	valueResp := &PBDTableGetResp{
+	key_str := fmt.Sprintf("%x", keyHash)
+	itemResp := &PBDTableItem{
 		Found: proto.Bool(false),
 		Value: nil,
 	}
-	if val, ok := vn_table[key_str]; ok {
-		valueResp.Found = proto.Bool(true)
-		valueResp.Value = val.Val
+	if localItem, ok := vn_table[key_str]; ok {
+		itemResp.Found = proto.Bool(true)
+		itemResp.Val = localItem.Val
 	}
 	// encode and send the response
-	pbdata, err := proto.Marshal(valueResp)
+	pbdata, err := proto.Marshal(itemResp)
 	if err != nil {
 		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::GetHandler - failed to marshal response - " + err.Error())
 		w <- errorMsg
 		return
 	}
 	w <- &dendrite.ChordMsg{
-		Type: PbDtableGetResp,
+		Type: PbDtableItem,
 		Data: pbdata,
 	}
 	return
@@ -136,7 +136,7 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	return
 }
 
-func (dt *DTable) zmq_setmeta_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
+func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableSetMeta)
 	key := pbMsg.GetKey()
 	state := pbMsg.GetState()

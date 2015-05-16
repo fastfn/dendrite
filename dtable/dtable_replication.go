@@ -200,21 +200,84 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 
 }
 
-// changeReplicas()
+// changeReplicas() -- callend when replica set changes
+//
 func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite.Vnode) {
+	// loop over primary table and get replicaVnodes
+	// loop over replicaVnodes and compare with new_replica at that position
+	//  - if new_replica at that position is nil or out of range- remove existing replica
+	//  - if new_replica at that position is different from existing replica - remove existing and write new
+	//  - if there are more new_replicas than existing ones, continue writing to them
+	vn_table := dt.table[vnode.String()]
+	new_replica_len := len(new_replicas)
+
+KEY_LOOP:
+	for key_str, val := range vn_table {
+		success_replicas := make([]*dendrite.Vnode, 0)
+		last_new_replica := 0
+
+	REPL_LOOP:
+		for idx, existing := range val.replicaVnodes {
+			// check if new_replica is out of range on this position
+			if new_replica_len-1 < idx {
+				// remove existing replica
+				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+					log.Printf("changeReplicas() - (1) error removing existing replica %s for key %s", existing.String(), key_str)
+				} else {
+					val.replicaVnodes[idx] = nil
+				}
+				continue REPL_LOOP
+			}
+			if new_replicas[idx] == nil {
+				// remove existing replica
+				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+					log.Printf("changeReplicas() - (2) error removing existing replica %s for key %s", existing.String(), key_str)
+				} else {
+					val.replicaVnodes[idx] = nil
+				}
+				continue REPL_LOOP
+			}
+			if new_replicas[idx].String() != existing.String() {
+				// remove existing replica
+				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+					log.Printf("changeReplicas() - (3) error removing existing replica %s for key %s", existing.String(), key_str)
+				}
+				// write new one
+				rval := &rvalue{
+					Val:       val.Val,
+					clean_key: val.clean_key,
+					timestamp: val.timestamp,
+					depth:     -1,
+					state:     replicaIncomplete,
+					master:    vnode,
+				}
+				if err := dt.remoteWriteReplica(new_replicas[idx], dendrite.KeyFromString(key_str), rval); err != nil {
+					log.Printf("changeReplicas() - error writing new replica %s for key %s", new_replicas[idx].String(), key_str)
+					continue REPL_LOOP
+				} else {
+					success_replicas = append(success_replicas, new_replicas[idx])
+					last_new_replica += 1
+					continue REPL_LOOP
+				}
+			} else {
+				// we don't need to do anything here, we'll just update metadata later on
+				success_replicas = append(success_replicas)
+				last_new_replica += 1
+				continue REPL_LOOP
+			}
+		}
+	}
 
 }
 
 func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, limit int) {
 	handler, _ := dt.transport.GetVnodeHandler(vnode)
 	if handler == nil {
-		log.Println("Replicator returned 0")
 		return
 	}
 	// find remote successors to write replicas to
 	remote_succs, err := handler.FindRemoteSuccessors(limit)
 	if err != nil {
-		log.Println("Replicator returned 1")
 		return
 	}
 	// now lets write replicas
@@ -233,7 +296,6 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, li
 		go dt.remoteSet(vnode, succ, key, nval, 1, false, done_c)
 		err = <-done_c
 		if err != nil {
-			log.Printf("replicator returned due to error %s\n", err.Error())
 			return
 		}
 		item_replicas = append(item_replicas, succ)

@@ -9,13 +9,16 @@ It is generated from these files:
 	dtable.proto
 
 It has these top-level messages:
-	PBDTableGet
-	PBDTableGetResp
-	PBDTableSet
-	PBDTableSetMeta
-	PBDTableSetResp
-	PBDTableDemoteKey
+	PBDTableResponse
+	PBDTableReplicaInfo
+	PBDTableItem
+	PBDTableDemotedItem
+	PBDTableMultiItemResponse
+	PBDTableGetItem
+	PBDTableSetItem
+	PBDTableSetMultiItem
 	PBDTableClearReplica
+	PBDTableSetReplicaInfo
 */
 package dtable
 
@@ -27,251 +30,314 @@ import dendrite "github.com/fastfn/dendrite"
 var _ = proto.Marshal
 var _ = math.Inf
 
-type PBDTableGet struct {
-	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
-	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	XXX_unrecognized []byte                 `json:"-"`
-}
-
-func (m *PBDTableGet) Reset()         { *m = PBDTableGet{} }
-func (m *PBDTableGet) String() string { return proto.CompactTextString(m) }
-func (*PBDTableGet) ProtoMessage()    {}
-
-func (m *PBDTableGet) GetDest() *dendrite.PBProtoVnode {
-	if m != nil {
-		return m.Dest
-	}
-	return nil
-}
-
-func (m *PBDTableGet) GetKey() []byte {
-	if m != nil {
-		return m.Key
-	}
-	return nil
-}
-
-type PBDTableGetResp struct {
-	Found            *bool  `protobuf:"varint,1,req,name=found" json:"found,omitempty"`
-	Value            []byte `protobuf:"bytes,2,opt,name=value" json:"value,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *PBDTableGetResp) Reset()         { *m = PBDTableGetResp{} }
-func (m *PBDTableGetResp) String() string { return proto.CompactTextString(m) }
-func (*PBDTableGetResp) ProtoMessage()    {}
-
-func (m *PBDTableGetResp) GetFound() bool {
-	if m != nil && m.Found != nil {
-		return *m.Found
-	}
-	return false
-}
-
-func (m *PBDTableGetResp) GetValue() []byte {
-	if m != nil {
-		return m.Value
-	}
-	return nil
-}
-
-type PBDTableSet struct {
-	Origin           *dendrite.PBProtoVnode   `protobuf:"bytes,1,req,name=origin" json:"origin,omitempty"`
-	Dest             *dendrite.PBProtoVnode   `protobuf:"bytes,2,req,name=dest" json:"dest,omitempty"`
-	Key              []byte                   `protobuf:"bytes,3,req,name=key" json:"key,omitempty"`
-	IsReplica        *bool                    `protobuf:"varint,4,req,name=isReplica" json:"isReplica,omitempty"`
-	MinAcks          *int32                   `protobuf:"varint,5,req,name=minAcks" json:"minAcks,omitempty"`
-	ReplicaVnodes    []*dendrite.PBProtoVnode `protobuf:"bytes,6,rep,name=replicaVnodes" json:"replicaVnodes,omitempty"`
-	Val              []byte                   `protobuf:"bytes,7,opt,name=val" json:"val,omitempty"`
-	Demoting         *bool                    `protobuf:"varint,8,opt,name=demoting" json:"demoting,omitempty"`
-	XXX_unrecognized []byte                   `json:"-"`
-}
-
-func (m *PBDTableSet) Reset()         { *m = PBDTableSet{} }
-func (m *PBDTableSet) String() string { return proto.CompactTextString(m) }
-func (*PBDTableSet) ProtoMessage()    {}
-
-func (m *PBDTableSet) GetOrigin() *dendrite.PBProtoVnode {
-	if m != nil {
-		return m.Origin
-	}
-	return nil
-}
-
-func (m *PBDTableSet) GetDest() *dendrite.PBProtoVnode {
-	if m != nil {
-		return m.Dest
-	}
-	return nil
-}
-
-func (m *PBDTableSet) GetKey() []byte {
-	if m != nil {
-		return m.Key
-	}
-	return nil
-}
-
-func (m *PBDTableSet) GetIsReplica() bool {
-	if m != nil && m.IsReplica != nil {
-		return *m.IsReplica
-	}
-	return false
-}
-
-func (m *PBDTableSet) GetMinAcks() int32 {
-	if m != nil && m.MinAcks != nil {
-		return *m.MinAcks
-	}
-	return 0
-}
-
-func (m *PBDTableSet) GetReplicaVnodes() []*dendrite.PBProtoVnode {
-	if m != nil {
-		return m.ReplicaVnodes
-	}
-	return nil
-}
-
-func (m *PBDTableSet) GetVal() []byte {
-	if m != nil {
-		return m.Val
-	}
-	return nil
-}
-
-func (m *PBDTableSet) GetDemoting() bool {
-	if m != nil && m.Demoting != nil {
-		return *m.Demoting
-	}
-	return false
-}
-
-// set metadata for replica records
-type PBDTableSetMeta struct {
-	Dest             *dendrite.PBProtoVnode   `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
-	Key              []byte                   `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	State            *int32                   `protobuf:"varint,3,req,name=state" json:"state,omitempty"`
-	Depth            *int32                   `protobuf:"varint,4,req,name=depth" json:"depth,omitempty"`
-	Master           *dendrite.PBProtoVnode   `protobuf:"bytes,5,req,name=master" json:"master,omitempty"`
-	ReplicaVnodes    []*dendrite.PBProtoVnode `protobuf:"bytes,6,rep,name=replicaVnodes" json:"replicaVnodes,omitempty"`
-	XXX_unrecognized []byte                   `json:"-"`
-}
-
-func (m *PBDTableSetMeta) Reset()         { *m = PBDTableSetMeta{} }
-func (m *PBDTableSetMeta) String() string { return proto.CompactTextString(m) }
-func (*PBDTableSetMeta) ProtoMessage()    {}
-
-func (m *PBDTableSetMeta) GetDest() *dendrite.PBProtoVnode {
-	if m != nil {
-		return m.Dest
-	}
-	return nil
-}
-
-func (m *PBDTableSetMeta) GetKey() []byte {
-	if m != nil {
-		return m.Key
-	}
-	return nil
-}
-
-func (m *PBDTableSetMeta) GetState() int32 {
-	if m != nil && m.State != nil {
-		return *m.State
-	}
-	return 0
-}
-
-func (m *PBDTableSetMeta) GetDepth() int32 {
-	if m != nil && m.Depth != nil {
-		return *m.Depth
-	}
-	return 0
-}
-
-func (m *PBDTableSetMeta) GetMaster() *dendrite.PBProtoVnode {
-	if m != nil {
-		return m.Master
-	}
-	return nil
-}
-
-func (m *PBDTableSetMeta) GetReplicaVnodes() []*dendrite.PBProtoVnode {
-	if m != nil {
-		return m.ReplicaVnodes
-	}
-	return nil
-}
-
-type PBDTableSetResp struct {
+type PBDTableResponse struct {
 	Ok               *bool   `protobuf:"varint,1,req,name=ok" json:"ok,omitempty"`
 	Error            *string `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
 	XXX_unrecognized []byte  `json:"-"`
 }
 
-func (m *PBDTableSetResp) Reset()         { *m = PBDTableSetResp{} }
-func (m *PBDTableSetResp) String() string { return proto.CompactTextString(m) }
-func (*PBDTableSetResp) ProtoMessage()    {}
+func (m *PBDTableResponse) Reset()         { *m = PBDTableResponse{} }
+func (m *PBDTableResponse) String() string { return proto.CompactTextString(m) }
+func (*PBDTableResponse) ProtoMessage()    {}
 
-func (m *PBDTableSetResp) GetOk() bool {
+func (m *PBDTableResponse) GetOk() bool {
 	if m != nil && m.Ok != nil {
 		return *m.Ok
 	}
 	return false
 }
 
-func (m *PBDTableSetResp) GetError() string {
+func (m *PBDTableResponse) GetError() string {
 	if m != nil && m.Error != nil {
 		return *m.Error
 	}
 	return ""
 }
 
-type PBDTableDemoteKey struct {
-	Dest             *dendrite.PBProtoVnode   `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
-	Key              []byte                   `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	Val              []byte                   `protobuf:"bytes,3,req,name=val" json:"val,omitempty"`
-	Timestamp        *int64                   `protobuf:"varint,4,req,name=timestamp" json:"timestamp,omitempty"`
-	ReplicaVnodes    []*dendrite.PBProtoVnode `protobuf:"bytes,5,rep,name=replicaVnodes" json:"replicaVnodes,omitempty"`
+type PBDTableReplicaInfo struct {
+	Master           *dendrite.PBProtoVnode   `protobuf:"bytes,1,opt,name=master" json:"master,omitempty"`
+	Vnodes           []*dendrite.PBProtoVnode `protobuf:"bytes,2,rep,name=vnodes" json:"vnodes,omitempty"`
+	OrphanVnodes     []*dendrite.PBProtoVnode `protobuf:"bytes,3,rep,name=orphanVnodes" json:"orphanVnodes,omitempty"`
+	State            *int32                   `protobuf:"varint,4,opt,name=state" json:"state,omitempty"`
+	Depth            *int32                   `protobuf:"varint,5,opt,name=depth" json:"depth,omitempty"`
 	XXX_unrecognized []byte                   `json:"-"`
 }
 
-func (m *PBDTableDemoteKey) Reset()         { *m = PBDTableDemoteKey{} }
-func (m *PBDTableDemoteKey) String() string { return proto.CompactTextString(m) }
-func (*PBDTableDemoteKey) ProtoMessage()    {}
+func (m *PBDTableReplicaInfo) Reset()         { *m = PBDTableReplicaInfo{} }
+func (m *PBDTableReplicaInfo) String() string { return proto.CompactTextString(m) }
+func (*PBDTableReplicaInfo) ProtoMessage()    {}
 
-func (m *PBDTableDemoteKey) GetDest() *dendrite.PBProtoVnode {
+func (m *PBDTableReplicaInfo) GetMaster() *dendrite.PBProtoVnode {
 	if m != nil {
-		return m.Dest
+		return m.Master
 	}
 	return nil
 }
 
-func (m *PBDTableDemoteKey) GetKey() []byte {
+func (m *PBDTableReplicaInfo) GetVnodes() []*dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Vnodes
+	}
+	return nil
+}
+
+func (m *PBDTableReplicaInfo) GetOrphanVnodes() []*dendrite.PBProtoVnode {
+	if m != nil {
+		return m.OrphanVnodes
+	}
+	return nil
+}
+
+func (m *PBDTableReplicaInfo) GetState() int32 {
+	if m != nil && m.State != nil {
+		return *m.State
+	}
+	return 0
+}
+
+func (m *PBDTableReplicaInfo) GetDepth() int32 {
+	if m != nil && m.Depth != nil {
+		return *m.Depth
+	}
+	return 0
+}
+
+type PBDTableItem struct {
+	Key              []byte                 `protobuf:"bytes,1,req,name=key" json:"key,omitempty"`
+	Val              []byte                 `protobuf:"bytes,2,opt,name=val" json:"val,omitempty"`
+	Timestamp        *int64                 `protobuf:"varint,3,opt,name=timestamp" json:"timestamp,omitempty"`
+	Commited         *bool                  `protobuf:"varint,4,opt,name=commited" json:"commited,omitempty"`
+	KeyHash          []byte                 `protobuf:"bytes,5,opt,name=keyHash" json:"keyHash,omitempty"`
+	ReplicaInfo      *PBDTableReplicaInfo   `protobuf:"bytes,6,opt,name=replicaInfo" json:"replicaInfo,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,7,opt,name=origin" json:"origin,omitempty"`
+	Found            *bool                  `protobuf:"varint,8,opt,name=found" json:"found,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableItem) Reset()         { *m = PBDTableItem{} }
+func (m *PBDTableItem) String() string { return proto.CompactTextString(m) }
+func (*PBDTableItem) ProtoMessage()    {}
+
+func (m *PBDTableItem) GetKey() []byte {
 	if m != nil {
 		return m.Key
 	}
 	return nil
 }
 
-func (m *PBDTableDemoteKey) GetVal() []byte {
+func (m *PBDTableItem) GetVal() []byte {
 	if m != nil {
 		return m.Val
 	}
 	return nil
 }
 
-func (m *PBDTableDemoteKey) GetTimestamp() int64 {
+func (m *PBDTableItem) GetTimestamp() int64 {
 	if m != nil && m.Timestamp != nil {
 		return *m.Timestamp
 	}
 	return 0
 }
 
-func (m *PBDTableDemoteKey) GetReplicaVnodes() []*dendrite.PBProtoVnode {
+func (m *PBDTableItem) GetCommited() bool {
+	if m != nil && m.Commited != nil {
+		return *m.Commited
+	}
+	return false
+}
+
+func (m *PBDTableItem) GetKeyHash() []byte {
 	if m != nil {
-		return m.ReplicaVnodes
+		return m.KeyHash
+	}
+	return nil
+}
+
+func (m *PBDTableItem) GetReplicaInfo() *PBDTableReplicaInfo {
+	if m != nil {
+		return m.ReplicaInfo
+	}
+	return nil
+}
+
+func (m *PBDTableItem) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+func (m *PBDTableItem) GetFound() bool {
+	if m != nil && m.Found != nil {
+		return *m.Found
+	}
+	return false
+}
+
+type PBDTableDemotedItem struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Item             *PBDTableItem          `protobuf:"bytes,2,req,name=item" json:"item,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableDemotedItem) Reset()         { *m = PBDTableDemotedItem{} }
+func (m *PBDTableDemotedItem) String() string { return proto.CompactTextString(m) }
+func (*PBDTableDemotedItem) ProtoMessage()    {}
+
+func (m *PBDTableDemotedItem) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableDemotedItem) GetItem() *PBDTableItem {
+	if m != nil {
+		return m.Item
+	}
+	return nil
+}
+
+func (m *PBDTableDemotedItem) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+type PBDTableMultiItemResponse struct {
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,1,opt,name=origin" json:"origin,omitempty"`
+	Items            []*PBDTableItem        `protobuf:"bytes,2,rep,name=items" json:"items,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableMultiItemResponse) Reset()         { *m = PBDTableMultiItemResponse{} }
+func (m *PBDTableMultiItemResponse) String() string { return proto.CompactTextString(m) }
+func (*PBDTableMultiItemResponse) ProtoMessage()    {}
+
+func (m *PBDTableMultiItemResponse) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+func (m *PBDTableMultiItemResponse) GetItems() []*PBDTableItem {
+	if m != nil {
+		return m.Items
+	}
+	return nil
+}
+
+type PBDTableGetItem struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	KeyHash          []byte                 `protobuf:"bytes,2,req,name=keyHash" json:"keyHash,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableGetItem) Reset()         { *m = PBDTableGetItem{} }
+func (m *PBDTableGetItem) String() string { return proto.CompactTextString(m) }
+func (*PBDTableGetItem) ProtoMessage()    {}
+
+func (m *PBDTableGetItem) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableGetItem) GetKeyHash() []byte {
+	if m != nil {
+		return m.KeyHash
+	}
+	return nil
+}
+
+func (m *PBDTableGetItem) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+type PBDTableSetItem struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Item             *PBDTableItem          `protobuf:"bytes,2,req,name=item" json:"item,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	Demoting         *bool                  `protobuf:"varint,4,opt,name=demoting" json:"demoting,omitempty"`
+	Replica          *bool                  `protobuf:"varint,5,opt,name=replica" json:"replica,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableSetItem) Reset()         { *m = PBDTableSetItem{} }
+func (m *PBDTableSetItem) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSetItem) ProtoMessage()    {}
+
+func (m *PBDTableSetItem) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSetItem) GetItem() *PBDTableItem {
+	if m != nil {
+		return m.Item
+	}
+	return nil
+}
+
+func (m *PBDTableSetItem) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+func (m *PBDTableSetItem) GetDemoting() bool {
+	if m != nil && m.Demoting != nil {
+		return *m.Demoting
+	}
+	return false
+}
+
+func (m *PBDTableSetItem) GetReplica() bool {
+	if m != nil && m.Replica != nil {
+		return *m.Replica
+	}
+	return false
+}
+
+type PBDTableSetMultiItem struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,2,opt,name=origin" json:"origin,omitempty"`
+	Items            []*PBDTableItem        `protobuf:"bytes,3,rep,name=items" json:"items,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableSetMultiItem) Reset()         { *m = PBDTableSetMultiItem{} }
+func (m *PBDTableSetMultiItem) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSetMultiItem) ProtoMessage()    {}
+
+func (m *PBDTableSetMultiItem) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSetMultiItem) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+func (m *PBDTableSetMultiItem) GetItems() []*PBDTableItem {
+	if m != nil {
+		return m.Items
 	}
 	return nil
 }
@@ -280,6 +346,7 @@ type PBDTableClearReplica struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
 	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
 	Demoted          *bool                  `protobuf:"varint,3,req,name=demoted" json:"demoted,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,4,opt,name=origin" json:"origin,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -306,6 +373,46 @@ func (m *PBDTableClearReplica) GetDemoted() bool {
 		return *m.Demoted
 	}
 	return false
+}
+
+func (m *PBDTableClearReplica) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+// set metadata for replica records
+type PBDTableSetReplicaInfo struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	ReplicaInfo      *PBDTableReplicaInfo   `protobuf:"bytes,2,req,name=replicaInfo" json:"replicaInfo,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTableSetReplicaInfo) Reset()         { *m = PBDTableSetReplicaInfo{} }
+func (m *PBDTableSetReplicaInfo) String() string { return proto.CompactTextString(m) }
+func (*PBDTableSetReplicaInfo) ProtoMessage()    {}
+
+func (m *PBDTableSetReplicaInfo) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSetReplicaInfo) GetReplicaInfo() *PBDTableReplicaInfo {
+	if m != nil {
+		return m.ReplicaInfo
+	}
+	return nil
+}
+
+func (m *PBDTableSetReplicaInfo) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
 }
 
 func init() {

@@ -1,52 +1,71 @@
 package dtable;
 import "chord.proto";
-message PBDTableGet {
-	required dendrite.PBProtoVnode dest = 1;
-	required bytes key = 2;
-}
 
-message PBDTableGetResp {
-	required bool found = 1;
-	optional bytes value = 2;
-
-}
-
-message PBDTableSet {
-	required dendrite.PBProtoVnode origin = 1;
-	required dendrite.PBProtoVnode dest = 2;
-	required bytes key = 3;
-	required bool isReplica = 4;
-	required int32 minAcks = 5;
-	repeated dendrite.PBProtoVnode replicaVnodes = 6;
-	optional bytes val = 7;
-	optional bool demoting = 8;
-}
-
-// set metadata for replica records
-message PBDTableSetMeta {
-	required dendrite.PBProtoVnode dest = 1;
-	required bytes key = 2;
-	required int32 state = 3;
-	required int32 depth = 4;
-	required dendrite.PBProtoVnode master = 5;
-	repeated dendrite.PBProtoVnode replicaVnodes = 6;
-}
-
-message PBDTableSetResp {
+message	PBDTableResponse {
 	required bool ok = 1;
 	optional string error = 2;
 }
 
-message PBDTableDemoteKey {
+message PBDTableReplicaInfo {
+	optional dendrite.PBProtoVnode master = 1;
+	repeated dendrite.PBProtoVnode vnodes = 2;
+	repeated dendrite.PBProtoVnode orphanVnodes = 3;
+	optional int32 state = 4;
+	optional int32 depth = 5;
+}
+
+message PBDTableItem {
+	required bytes key = 1;
+	optional bytes val = 2;
+	optional int64 timestamp = 3;
+	optional bool commited = 4;
+	optional bytes keyHash = 5;
+	optional PBDTableReplicaInfo replicaInfo = 6;
+	optional dendrite.PBProtoVnode origin = 7;
+	optional bool found = 8;
+}
+
+message PBDTableDemotedItem {
 	required dendrite.PBProtoVnode dest = 1;
-	required bytes key = 2;
-	required bytes val = 3;
-	required int64 timestamp = 4;
-	repeated dendrite.PBProtoVnode replicaVnodes = 5;
+	required PBDTableItem item = 2;
+	optional dendrite.PBProtoVnode origin = 3;
+}
+
+message PBDTableMultiItemResponse {
+	optional dendrite.PBProtoVnode origin = 1;
+	repeated PBDTableItem items = 2;
+}
+
+message PBDTableGetItem {
+	required dendrite.PBProtoVnode dest = 1;
+	required bytes keyHash = 2;
+	optional dendrite.PBProtoVnode origin = 3;
+}
+
+message PBDTableSetItem {
+	required dendrite.PBProtoVnode dest = 1;
+	required PBDTableItem item = 2;
+	optional dendrite.PBProtoVnode origin = 3;
+	optional bool demoting = 4;
+	optional bool replica = 5;
+}
+
+message PBDTableSetMultiItem {
+	required dendrite.PBProtoVnode dest = 1;
+	optional dendrite.PBProtoVnode origin = 2;
+	repeated PBDTableItem items = 3;
 }
 
 message PBDTableClearReplica {
 	required dendrite.PBProtoVnode dest = 1;
 	required bytes key = 2;
 	required bool demoted = 3;
+	optional dendrite.PBProtoVnode origin = 4;
+}
+
+// set metadata for replica records
+message PBDTableSetReplicaInfo {
+	required dendrite.PBProtoVnode dest = 1;
+	required PBDTableReplicaInfo replicaInfo = 2;
+	optional dendrite.PBProtoVnode origin = 3;
 }
