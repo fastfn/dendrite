@@ -5,7 +5,6 @@ import (
 	"github.com/fastfn/dendrite"
 	"log"
 	"sync"
-	"time"
 )
 
 // if node left, maintain consistency by finding local replicas and push them one step further if possible
@@ -98,23 +97,23 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 	//log.Printf("Node left me: %X for %X now replicating to:\n", localVn.Id, new_pred.Id)
 	rtable := dt.rtable[vnode.String()]
 	vn_table := dt.table[vnode.String()]
-	for key_str, rval := range rtable {
-		if rval.depth != 0 {
+	for key_str, ritem := range rtable {
+		if ritem.replicaInfo.depth != 0 {
 			continue
 		}
 		// check if we're real successor for this key
-		succs, err := dt.ring.Lookup(1, dendrite.KeyFromString(key_str))
+		succs, err := dt.ring.Lookup(1, ritem.Key)
 		if err != nil {
 			log.Printf("Could not promote key, Lookup() failed: %s\n", err.Error())
 			continue
 		}
 		if bytes.Compare(succs[0].Id, vnode.Id) == 0 {
 			// this key should be promoted locally
-			new_val := rvalue2value(rval)
-			vn_table[key_str] = new_val
-			new_val.commited = true
+			new_ritem := ritem.dup()
+			vn_table[key_str] = new_ritem
+			new_ritem.commited = true
 			log.Printf("Promoted local key: %s - running replicator now", key_str)
-			dt.replicateKey(vnode, dendrite.KeyFromString(key_str), new_val, dt.ring.Replicas())
+			dt.replicateKey(vnode, new_ritem, dt.ring.Replicas())
 			delete(rtable, key_str)
 		} else {
 			// promote remote vnode
@@ -152,28 +151,26 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 	case true:
 		// move all replica keys to new vnode
 		vn_rtable := dt.rtable[vnode.String()]
-		for rkey, rval := range vn_rtable {
-			rval.replicaVnodes[rval.depth] = new_pred
-			dt.rtable[new_pred.String()][rkey] = rval
+		for rkey, ritem := range vn_rtable {
+			ritem.replicaInfo.vnodes[ritem.replicaInfo.depth] = new_pred
+			dt.rtable[new_pred.String()][rkey] = ritem
 			delete(vn_rtable, rkey)
 
 			// update metadata on all replicas
-			inSync := replicaComplete
-			for idx, replica := range rval.replicaVnodes {
+			new_state := ritem.replicaInfo.state
+			for idx, replica := range ritem.replicaInfo.vnodes {
 				// skip ourselves
-				if idx == rval.depth {
+				if idx == ritem.replicaInfo.depth {
 					continue
 				}
-				meta_rval := &rvalue{
-					depth:         idx,
-					state:         inSync,
-					master:        rval.master,
-					replicaVnodes: rval.replicaVnodes,
-				}
-				err := dt.remoteSetMeta(replica, dendrite.KeyFromString(rkey), meta_rval)
+				new_ritem := ritem.dup()
+				new_ritem.replicaInfo.depth = idx
+				new_ritem.replicaInfo.state = new_state
+
+				err := dt.remoteSetReplicaInfo(replica, new_ritem)
 				if err != nil {
 					log.Println("Error updating replicaMeta on demote() -", err)
-					inSync = replicaIncomplete
+					new_state = replicaIncomplete
 					continue
 				}
 			}
@@ -181,14 +178,13 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 	case false:
 		// loop over primary table to find keys that should belong to new predecessor
 		vn_table := dt.table[vnode.String()]
-		for key_str, val := range vn_table {
-			key := dendrite.KeyFromString(key_str)
-			if dendrite.Between(vnode.Id, new_pred.Id, key, true) {
+		for key_str, item := range vn_table {
+			if dendrite.Between(vnode.Id, new_pred.Id, item.keyHash, true) {
 				// copy the key to demoted table and remove it from primary one
-				dt.demoted_table[vnode.String()][key_str] = value2demotedItem(val, new_pred)
+				dt.demoted_table[vnode.String()][item.keyHashString()] = item.to_demoted(new_pred)
 				delete(vn_table, key_str)
 				done_c := make(chan error)
-				go dt.remoteSet(vnode, new_pred, key, val, dt.ring.Replicas(), true, done_c)
+				go dt.remoteSet(vnode, new_pred, item, dt.ring.Replicas(), true, done_c)
 				err := <-done_c
 				if err != nil {
 					log.Println("Error demoting key to new predecessor -", err)
@@ -212,46 +208,43 @@ func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite
 	new_replica_len := len(new_replicas)
 
 KEY_LOOP:
-	for key_str, val := range vn_table {
+	for key_str, item := range vn_table {
 		success_replicas := make([]*dendrite.Vnode, 0)
 		last_new_replica := 0
 
 	REPL_LOOP:
-		for idx, existing := range val.replicaVnodes {
+		for idx, existing := range item.replicaInfo.vnodes {
 			// check if new_replica is out of range on this position
 			if new_replica_len-1 < idx {
 				// remove existing replica
-				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+				if err := dt.remoteClearReplica(existing, item, false); err != nil {
 					log.Printf("changeReplicas() - (1) error removing existing replica %s for key %s", existing.String(), key_str)
 				} else {
-					val.replicaVnodes[idx] = nil
+					item.replicaInfo.vnodes[idx] = nil
 				}
 				continue REPL_LOOP
 			}
 			if new_replicas[idx] == nil {
 				// remove existing replica
-				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+				if err := dt.remoteClearReplica(existing, item, false); err != nil {
 					log.Printf("changeReplicas() - (2) error removing existing replica %s for key %s", existing.String(), key_str)
 				} else {
-					val.replicaVnodes[idx] = nil
+					item.replicaInfo.vnodes[idx] = nil
 				}
 				continue REPL_LOOP
 			}
 			if new_replicas[idx].String() != existing.String() {
 				// remove existing replica
-				if err := dt.remoteClearReplica(existing, dendrite.KeyFromString(key_str), false); err != nil {
+				if err := dt.remoteClearReplica(existing, item, false); err != nil {
 					log.Printf("changeReplicas() - (3) error removing existing replica %s for key %s", existing.String(), key_str)
 				}
 				// write new one
-				rval := &rvalue{
-					Val:       val.Val,
-					clean_key: val.clean_key,
-					timestamp: val.timestamp,
-					depth:     -1,
-					state:     replicaIncomplete,
-					master:    vnode,
-				}
-				if err := dt.remoteWriteReplica(new_replicas[idx], dendrite.KeyFromString(key_str), rval); err != nil {
+				new_ritem := item.dup()
+				new_ritem.replicaInfo.depth = -1 // we don't know the depth yet
+				new_ritem.replicaInfo.state = replicaIncomplete
+				new_ritem.replicaInfo.master = vnode
+
+				if err := dt.remoteWriteReplica(vnode, new_replicas[idx], new_ritem); err != nil {
 					log.Printf("changeReplicas() - error writing new replica %s for key %s", new_replicas[idx].String(), key_str)
 					continue REPL_LOOP
 				} else {
@@ -270,7 +263,7 @@ KEY_LOOP:
 
 }
 
-func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, limit int) {
+func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int) {
 	handler, _ := dt.transport.GetVnodeHandler(vnode)
 	if handler == nil {
 		return
@@ -285,16 +278,12 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, li
 
 	for _, succ := range remote_succs {
 		log.Printf("replicating to: %x\n", succ.Id)
-		nval := &value{
-			Val:       val.Val,
-			timestamp: val.timestamp,
-			rstate:    replicaIncomplete,
-			isReplica: true,
-			commited:  false,
-		}
+		new_ritem := reqItem.dup()
+		new_ritem.replicaInfo.state = replicaIncomplete
+		new_ritem.commited = false
+
 		done_c := make(chan error)
-		go dt.remoteSet(vnode, succ, key, nval, 1, false, done_c)
-		err = <-done_c
+		err := dt.remoteWriteReplica(vnode, succ, new_ritem)
 		if err != nil {
 			return
 		}
@@ -302,20 +291,21 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, key []byte, val *value, li
 	}
 
 	// replicas have been written, lets now update metadata
+	new_ritem := reqItem.dup()
 	for idx, replica := range item_replicas {
-		rval := &rvalue{
-			depth:         idx,
-			state:         replicaComplete,
-			master:        vnode,
-			replicaVnodes: item_replicas,
-		}
-		err := dt.remoteSetMeta(replica, key, rval)
+		new_ritem := reqItem.dup()
+		new_ritem.replicaInfo.depth = idx
+		new_ritem.replicaInfo.state = replicaStable
+		new_ritem.replicaInfo.vnodes = item_replicas
+
+		err := dt.remoteSetReplicaInfo(replica, new_ritem)
 		if err != nil {
 			break
 		}
 	}
 }
 
+/*
 func rvalue2value(rval *rvalue) *value {
 	data := make([]byte, len(rval.Val))
 	copy(data, rval.Val)
@@ -327,18 +317,4 @@ func rvalue2value(rval *rvalue) *value {
 		rstate:    replicaIncomplete,
 	}
 }
-
-func value2demotedItem(val *value, new_master *dendrite.Vnode) *demotedItem {
-	data := make([]byte, len(val.Val))
-	copy(data, val.Val)
-	return &demotedItem{
-		val:           data,
-		clean_key:     val.clean_key,
-		timestamp:     val.timestamp,
-		new_master:    new_master,
-		replicaVnodes: val.replicaVnodes,
-		demoted_ts:    time.Now(),
-	}
-}
-
-//
+*/

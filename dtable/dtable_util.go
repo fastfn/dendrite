@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
+	"time"
 )
 
 func (item *kvItem) keyHashString() string {
@@ -14,12 +15,12 @@ func (item *kvItem) keyHashString() string {
 }
 
 func (item *kvItem) to_protobuf() *PBDTableItem {
-	rv := &PBDTableGet{
+	rv := &PBDTableItem{
 		Key:       item.Key,
 		Val:       item.Val,
 		Timestamp: proto.Int64(item.timestamp.UnixNano()),
-		KeyHash:   reqItem.keyHash,
-		Commited:  item.commited,
+		KeyHash:   item.keyHash,
+		Commited:  proto.Bool(item.commited),
 	}
 	if item.replicaInfo != nil {
 		pb_master := &dendrite.PBProtoVnode{
@@ -65,14 +66,14 @@ func (item *kvItem) from_protobuf(pb *PBDTableItem) {
 			Id:   pb_replicaInfo.GetMaster().GetId(),
 			Host: pb_replicaInfo.GetMaster().GetHost(),
 		}
-		item.replicaInfo.vnodes = make([]*dendrite.Vnode)
+		item.replicaInfo.vnodes = make([]*dendrite.Vnode, 0)
 		for _, pb_vnode := range pb_replicaInfo.GetVnodes() {
 			item.replicaInfo.vnodes = append(item.replicaInfo.vnodes, &dendrite.Vnode{
 				Id:   pb_vnode.GetId(),
 				Host: pb_vnode.GetHost(),
 			})
 		}
-		item.replicaInfo.orphan_vnodes = make([]*dendrite.Vnode)
+		item.replicaInfo.orphan_vnodes = make([]*dendrite.Vnode, 0)
 		for _, pb_orphanVnode := range pb_replicaInfo.GetOrphanVnodes() {
 			item.replicaInfo.orphan_vnodes = append(item.replicaInfo.orphan_vnodes, &dendrite.Vnode{
 				Id:   pb_orphanVnode.GetId(),
@@ -80,11 +81,17 @@ func (item *kvItem) from_protobuf(pb *PBDTableItem) {
 			})
 		}
 		item.replicaInfo.state = replicaState(int(pb_replicaInfo.GetState()))
-		item.replicaInfo.depth = replicaState(int(pb_replicaInfo.GetDepth()))
+		item.replicaInfo.depth = int(pb_replicaInfo.GetDepth())
 	}
-	return item
 }
 
+func (item *kvItem) to_demoted(new_master *dendrite.Vnode) *demotedKvItem {
+	rv := new(demotedKvItem)
+	rv.item = item.dup()
+	rv.new_master = new_master
+	rv.demoted_ts = time.Now()
+	return rv
+}
 func (item *kvItem) dup() *kvItem {
 	new_item := new(kvItem)
 	copy(new_item.Key, item.Key)
@@ -104,4 +111,5 @@ func (item *kvItem) dup() *kvItem {
 	} else {
 		new_item.replicaInfo = nil
 	}
+	return new_item
 }
