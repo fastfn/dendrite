@@ -193,28 +193,30 @@ func (r *Ring) init(config *Config, transport Transport) {
 	// 	}
 	// }
 
-	go func() {
-		for {
-			for _, vnode := range r.vnodes {
-				var pred []byte
-				if vnode.predecessor == nil {
-					pred = nil
-				} else {
-					pred = vnode.predecessor.Id
-				}
-
-				fmt.Printf("Vnode: %X -> pred: %X -> succ: ", vnode.Id, pred)
-				for idx, suc := range vnode.successors {
-					if suc == nil {
-						break
+	/*
+		go func() {
+			for {
+				for _, vnode := range r.vnodes {
+					var pred []byte
+					if vnode.predecessor == nil {
+						pred = nil
+					} else {
+						pred = vnode.predecessor.Id
 					}
-					fmt.Printf("succ-%d-%X, ", idx, suc.Id)
+
+					fmt.Printf("Vnode: %X -> pred: %X -> succ: ", vnode.Id, pred)
+					for idx, suc := range vnode.successors {
+						if suc == nil {
+							break
+						}
+						fmt.Printf("succ-%d-%X, ", idx, suc.Id)
+					}
+					fmt.Printf("\n")
 				}
-				fmt.Printf("\n")
+				time.Sleep(15 * time.Second)
 			}
-			time.Sleep(15 * time.Second)
-		}
-	}()
+		}()
+	*/
 }
 
 func (r *Ring) schedule() {

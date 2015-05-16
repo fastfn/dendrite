@@ -106,7 +106,7 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 	success := true
-
+	fmt.Printf("SET() HANDLER CALLED # key: %s, dest: %s, demoting: %v, minAcks: %d\n", reqItem.keyHashString(), dest.String(), demoting, minAcks)
 	// make sure destination vnode exists locally
 	_, ok := dt.table[dest_key_str]
 	if !ok {

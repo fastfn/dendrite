@@ -180,6 +180,7 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 		vn_table := dt.table[vnode.String()]
 		for key_str, item := range vn_table {
 			if dendrite.Between(vnode.Id, new_pred.Id, item.keyHash, true) {
+				log.Printf("Analyzed key for demoting %s and pushing to %s\n", key_str, new_pred.String())
 				// copy the key to demoted table and remove it from primary one
 				dt.demoted_table[vnode.String()][item.keyHashString()] = item.to_demoted(new_pred)
 				delete(vn_table, key_str)

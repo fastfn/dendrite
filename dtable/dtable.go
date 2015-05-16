@@ -320,9 +320,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		newItem.replicaInfo.state = replicaIncomplete
 		newItem.commited = false
 
-		done_c := make(chan error)
-		go dt.remoteSet(vn, succ, newItem, minAcks, false, done_c)
-		err = <-done_c
+		err := dt.remoteWriteReplica(vn, succ, newItem)
 		if err != nil {
 			if !returned {
 				done <- fmt.Errorf("could not write replica due to error %s", err)
