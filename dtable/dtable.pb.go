@@ -267,7 +267,8 @@ type PBDTableSetItem struct {
 	Item             *PBDTableItem          `protobuf:"bytes,2,req,name=item" json:"item,omitempty"`
 	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
 	Demoting         *bool                  `protobuf:"varint,4,opt,name=demoting" json:"demoting,omitempty"`
-	Replica          *bool                  `protobuf:"varint,5,opt,name=replica" json:"replica,omitempty"`
+	IsReplica        *bool                  `protobuf:"varint,5,opt,name=isReplica" json:"isReplica,omitempty"`
+	MinAcks          *int32                 `protobuf:"varint,6,opt,name=minAcks" json:"minAcks,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -303,11 +304,18 @@ func (m *PBDTableSetItem) GetDemoting() bool {
 	return false
 }
 
-func (m *PBDTableSetItem) GetReplica() bool {
-	if m != nil && m.Replica != nil {
-		return *m.Replica
+func (m *PBDTableSetItem) GetIsReplica() bool {
+	if m != nil && m.IsReplica != nil {
+		return *m.IsReplica
 	}
 	return false
+}
+
+func (m *PBDTableSetItem) GetMinAcks() int32 {
+	if m != nil && m.MinAcks != nil {
+		return *m.MinAcks
+	}
+	return 0
 }
 
 type PBDTableSetMultiItem struct {
@@ -344,7 +352,7 @@ func (m *PBDTableSetMultiItem) GetItems() []*PBDTableItem {
 
 type PBDTableClearReplica struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
-	Key              []byte                 `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
+	KeyHash          []byte                 `protobuf:"bytes,2,req,name=keyHash" json:"keyHash,omitempty"`
 	Demoted          *bool                  `protobuf:"varint,3,req,name=demoted" json:"demoted,omitempty"`
 	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,4,opt,name=origin" json:"origin,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
@@ -361,9 +369,9 @@ func (m *PBDTableClearReplica) GetDest() *dendrite.PBProtoVnode {
 	return nil
 }
 
-func (m *PBDTableClearReplica) GetKey() []byte {
+func (m *PBDTableClearReplica) GetKeyHash() []byte {
 	if m != nil {
-		return m.Key
+		return m.KeyHash
 	}
 	return nil
 }
@@ -385,8 +393,9 @@ func (m *PBDTableClearReplica) GetOrigin() *dendrite.PBProtoVnode {
 // set metadata for replica records
 type PBDTableSetReplicaInfo struct {
 	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
-	ReplicaInfo      *PBDTableReplicaInfo   `protobuf:"bytes,2,req,name=replicaInfo" json:"replicaInfo,omitempty"`
-	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	KeyHash          []byte                 `protobuf:"bytes,2,req,name=keyHash" json:"keyHash,omitempty"`
+	ReplicaInfo      *PBDTableReplicaInfo   `protobuf:"bytes,3,req,name=replicaInfo" json:"replicaInfo,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,4,opt,name=origin" json:"origin,omitempty"`
 	XXX_unrecognized []byte                 `json:"-"`
 }
 
@@ -397,6 +406,13 @@ func (*PBDTableSetReplicaInfo) ProtoMessage()    {}
 func (m *PBDTableSetReplicaInfo) GetDest() *dendrite.PBProtoVnode {
 	if m != nil {
 		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTableSetReplicaInfo) GetKeyHash() []byte {
+	if m != nil {
+		return m.KeyHash
 	}
 	return nil
 }

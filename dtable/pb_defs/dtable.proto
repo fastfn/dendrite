@@ -47,7 +47,8 @@ message PBDTableSetItem {
 	required PBDTableItem item = 2;
 	optional dendrite.PBProtoVnode origin = 3;
 	optional bool demoting = 4;
-	optional bool replica = 5;
+	optional bool isReplica = 5;
+	optional int32 minAcks = 6;
 }
 
 message PBDTableSetMultiItem {
@@ -58,7 +59,7 @@ message PBDTableSetMultiItem {
 
 message PBDTableClearReplica {
 	required dendrite.PBProtoVnode dest = 1;
-	required bytes key = 2;
+	required bytes keyHash = 2;
 	required bool demoted = 3;
 	optional dendrite.PBProtoVnode origin = 4;
 }
@@ -66,6 +67,7 @@ message PBDTableClearReplica {
 // set metadata for replica records
 message PBDTableSetReplicaInfo {
 	required dendrite.PBProtoVnode dest = 1;
-	required PBDTableReplicaInfo replicaInfo = 2;
-	optional dendrite.PBProtoVnode origin = 3;
+	required bytes keyHash = 2;
+	required PBDTableReplicaInfo replicaInfo = 3;
+	optional dendrite.PBProtoVnode origin = 4;
 }
