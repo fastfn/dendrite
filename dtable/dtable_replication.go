@@ -4,11 +4,8 @@ import (
 	"bytes"
 	"github.com/fastfn/dendrite"
 	"log"
-	"sync"
 )
 
-
-*/
 // promote() - called when remote predecessor died or left the ring
 // because we're only first REMOTE node from original master
 // it doesn't mean that we're the actual successor for all the replicated data with depth 0
