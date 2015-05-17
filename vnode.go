@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"log"
 	"sync"
 	"time"
@@ -18,6 +19,20 @@ type Vnode struct {
 
 func (vn *Vnode) String() string {
 	return fmt.Sprintf("%x", vn.Id)
+}
+
+func (vn *Vnode) ToProtobuf() *PBProtoVnode {
+	return &PBProtoVnode{
+		Host: proto.String(vn.Host),
+		Id:   vn.Id,
+	}
+}
+
+func VnodeFromProtobuf(pb *PBProtoVnode) *Vnode {
+	return &Vnode{
+		Id:   pb.GetId(),
+		Host: pb.GetHost(),
+	}
 }
 
 // local Vnode

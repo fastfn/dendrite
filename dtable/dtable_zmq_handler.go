@@ -292,3 +292,42 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 	}
 	return
 }
+
+func (dt *DTable) zmq_promoteKey_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
+	pbMsg := request.TransportMsg.(PBDTableSetItem)
+	reqItem := new(kvItem)
+	reqItem.from_protobuf(pbMsg.GetItem())
+
+	dest := &dendrite.Vnode{
+		Id:   pbMsg.GetDest().GetId(),
+		Host: pbMsg.GetDest().GetHost(),
+	}
+
+	dest_key_str := fmt.Sprintf("%x", dest.Id)
+	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+	// make sure destination vnode exists locally
+	_, ok := dt.table[dest_key_str]
+	if !ok {
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetReplicaHandler - local vnode table not found")
+		w <- errorMsg
+		return
+	}
+	setResp := &PBDTableResponse{
+		Ok: proto.Bool(true),
+	}
+	dt.setReplica(dest, reqItem)
+
+	// encode and send the response
+	pbdata, err := proto.Marshal(setResp)
+	if err != nil {
+		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetReplicaHandler - failed to marshal response - " + err.Error())
+		w <- errorMsg
+		return
+	}
+	w <- &dendrite.ChordMsg{
+		Type: PbDtableResponse,
+		Data: pbdata,
+	}
+
+	return
+}

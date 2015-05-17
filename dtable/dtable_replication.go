@@ -22,6 +22,7 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 		// check if we're real successor for this key
 		succs, err := dt.ring.Lookup(1, ritem.keyHash)
 		if err != nil {
+			// TODO: call promote() again if temporary issue
 			log.Printf("Could not promote key, Lookup() failed: %s\n", err.Error())
 			continue
 		}
@@ -38,7 +39,9 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 			log.Printf("Promote finishing key %s, replicaVnodes are: %+v\n", key_str, new_ritem.replicaInfo.vnodes)
 		} else {
 			// TODO promote remote vnode
+			log.Printf("Promoting remote vnode %s for key %s\n", succs[0].String(), key_str)
 			delete(rtable, key_str)
+			dt.remotePromoteKey(vnode, succs[0], ritem)
 		}
 	}
 }

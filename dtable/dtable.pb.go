@@ -20,6 +20,7 @@ It has these top-level messages:
 	PBDTableSetMultiItem
 	PBDTableClearReplica
 	PBDTableSetReplicaInfo
+	PBDTablePromoteKey
 */
 package dtable
 
@@ -434,6 +435,38 @@ func (m *PBDTableSetReplicaInfo) GetReplicaInfo() *PBDTableReplicaInfo {
 }
 
 func (m *PBDTableSetReplicaInfo) GetOrigin() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Origin
+	}
+	return nil
+}
+
+type PBDTablePromoteKey struct {
+	Dest             *dendrite.PBProtoVnode `protobuf:"bytes,1,req,name=dest" json:"dest,omitempty"`
+	Item             *PBDTableItem          `protobuf:"bytes,2,req,name=item" json:"item,omitempty"`
+	Origin           *dendrite.PBProtoVnode `protobuf:"bytes,3,opt,name=origin" json:"origin,omitempty"`
+	XXX_unrecognized []byte                 `json:"-"`
+}
+
+func (m *PBDTablePromoteKey) Reset()         { *m = PBDTablePromoteKey{} }
+func (m *PBDTablePromoteKey) String() string { return proto.CompactTextString(m) }
+func (*PBDTablePromoteKey) ProtoMessage()    {}
+
+func (m *PBDTablePromoteKey) GetDest() *dendrite.PBProtoVnode {
+	if m != nil {
+		return m.Dest
+	}
+	return nil
+}
+
+func (m *PBDTablePromoteKey) GetItem() *PBDTableItem {
+	if m != nil {
+		return m.Item
+	}
+	return nil
+}
+
+func (m *PBDTablePromoteKey) GetOrigin() *dendrite.PBProtoVnode {
 	if m != nil {
 		return m.Origin
 	}

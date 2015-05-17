@@ -74,3 +74,9 @@ message PBDTableSetReplicaInfo {
 	required PBDTableReplicaInfo replicaInfo = 3;
 	optional dendrite.PBProtoVnode origin = 4;
 }
+
+message PBDTablePromoteKey {
+	required dendrite.PBProtoVnode dest = 1;
+	required PBDTableItem item = 2;
+	optional dendrite.PBProtoVnode origin = 3;
+}

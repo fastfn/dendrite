@@ -11,23 +11,7 @@ import (
 )
 
 type replicaState int
-
-const (
-	PbDtableStatus            dendrite.MsgType = 0x20 // status request to see if remote dtable is initialized
-	PbDtableResponse          dendrite.MsgType = 0x21 // generic response
-	PbDtableItem              dendrite.MsgType = 0x22 // single item response
-	PbDtableMultiItemResponse dendrite.MsgType = 0x23 // response with multiple items
-	PbDtableGetItem           dendrite.MsgType = 0x24 // getItem request
-	PbDtableSetItem           dendrite.MsgType = 0x25 // setItem request
-	PbDtableSetMultiItem      dendrite.MsgType = 0x26 // setMultiItem request
-	PbDtableClearReplica      dendrite.MsgType = 0x27 // clearReplica request
-	PbDtableSetReplica        dendrite.MsgType = 0x28 // setReplica request
-	PbDtableSetReplicaInfo    dendrite.MsgType = 0x29 // setReplicaInfo request
-
-	replicaStable     replicaState = 0 // all replicas commited
-	replicaPartial    replicaState = 1 // all available replicas commited but there's no enough remote nodes
-	replicaIncomplete replicaState = 2 // some of the replicas did not commit
-)
+type dtableEventType int
 
 type KVItem struct {
 	Key []byte
@@ -57,8 +41,45 @@ type demotedKvItem struct {
 	demoted_ts time.Time
 }
 
+type dtableEvent struct {
+	evType dtableEventType
+	vnode  *dendrite.Vnode
+	item   *kvItem
+}
 type itemMap map[string]*kvItem
 type demotedItemMap map[string]*demotedKvItem
+
+type DTable struct {
+	// base structures
+	table         map[string]itemMap
+	rtable        map[string]itemMap // rtable is table of replicas
+	demoted_table map[string]demotedItemMap
+	ring          *dendrite.Ring
+	transport     dendrite.Transport
+	// communication channels
+	event_c  chan *dendrite.EventCtx // dendrite sends events here
+	dtable_c chan *dtableEvent       // internal dtable events
+}
+
+const (
+	PbDtableStatus            dendrite.MsgType = 0x20 // status request to see if remote dtable is initialized
+	PbDtableResponse          dendrite.MsgType = 0x21 // generic response
+	PbDtableItem              dendrite.MsgType = 0x22 // single item response
+	PbDtableMultiItemResponse dendrite.MsgType = 0x23 // response with multiple items
+	PbDtableGetItem           dendrite.MsgType = 0x24 // getItem request
+	PbDtableSetItem           dendrite.MsgType = 0x25 // setItem request
+	PbDtableSetMultiItem      dendrite.MsgType = 0x26 // setMultiItem request
+	PbDtableClearReplica      dendrite.MsgType = 0x27 // clearReplica request
+	PbDtableSetReplica        dendrite.MsgType = 0x28 // setReplica request
+	PbDtableSetReplicaInfo    dendrite.MsgType = 0x29 // setReplicaInfo request
+	PbDtablePromoteKey        dendrite.MsgType = 0x30 // promote remote vnode for given key
+
+	replicaStable     replicaState = 0 // all replicas commited
+	replicaPartial    replicaState = 1 // all available replicas commited but there's no enough remote nodes
+	replicaIncomplete replicaState = 2 // some of the replicas did not commit
+
+	evPromoteKey dtableEventType = 0
+)
 
 func (m itemMap) put(item *kvItem) error {
 	if oldItem, ok := m[item.keyHashString()]; ok {
@@ -83,17 +104,6 @@ func (m itemMap) put(item *kvItem) error {
 	return nil
 }
 
-type DTable struct {
-	// base structures
-	table         map[string]itemMap
-	rtable        map[string]itemMap // rtable is table of replicas
-	demoted_table map[string]demotedItemMap
-	ring          *dendrite.Ring
-	transport     dendrite.Transport
-	// communication channels
-	event_c chan *dendrite.EventCtx
-}
-
 func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 	dt := &DTable{
 		table:         make(map[string]itemMap),
@@ -102,6 +112,7 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
 		ring:          ring,
 		transport:     transport,
 		event_c:       make(chan *dendrite.EventCtx),
+		dtable_c:      make(chan *dtableEvent),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
@@ -165,7 +176,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		var dtableSetItemMsg PBDTableSetItem
 		err := proto.Unmarshal(cm.Data, &dtableSetItemMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBDTableSetItem message - %s - %+v", err, cm.Data)
+			return nil, fmt.Errorf("error decoding PBDTableSetItem message - %s", err)
 		}
 		cm.TransportMsg = dtableSetItemMsg
 		cm.TransportHandler = dt.zmq_set_handler
@@ -173,7 +184,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		var dtableSetReplicaInfoMsg PBDTableSetReplicaInfo
 		err := proto.Unmarshal(cm.Data, &dtableSetReplicaInfoMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBDTableSetReplicaInfo message - %s - %+v", err, cm.Data)
+			return nil, fmt.Errorf("error decoding PBDTableSetReplicaInfo message - %s", err)
 		}
 		cm.TransportMsg = dtableSetReplicaInfoMsg
 		cm.TransportHandler = dt.zmq_setReplicaInfo_handler
@@ -181,7 +192,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		var dtableClearReplicaMsg PBDTableClearReplica
 		err := proto.Unmarshal(cm.Data, &dtableClearReplicaMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBDTableClearReplica message - %s - %+v", err, cm.Data)
+			return nil, fmt.Errorf("error decoding PBDTableClearReplica message - %s", err)
 		}
 		cm.TransportMsg = dtableClearReplicaMsg
 		cm.TransportHandler = dt.zmq_clearreplica_handler
@@ -189,10 +200,18 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		var dtableSetReplicaMsg PBDTableSetItem
 		err := proto.Unmarshal(cm.Data, &dtableSetReplicaMsg)
 		if err != nil {
-			return nil, fmt.Errorf("error decoding PBDTableSetReplica message - %s - %+v", err, cm.Data)
+			return nil, fmt.Errorf("error decoding PBDTableSetReplica message - %s", err)
 		}
 		cm.TransportMsg = dtableSetReplicaMsg
 		cm.TransportHandler = dt.zmq_setReplica_handler
+	case PbDtablePromoteKey:
+		var dtablePromoteKeyMsg PBDTablePromoteKey
+		err := proto.Unmarshal(cm.Data, &dtablePromoteKeyMsg)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding PBDTablePromoteKey message - %s", err)
+		}
+		cm.TransportMsg = dtablePromoteKeyMsg
+		cm.TransportHandler = dt.zmq_promoteKey_handler
 	case PbDtableResponse:
 		var dtableResponseMsg PBDTableResponse
 		err := proto.Unmarshal(cm.Data, &dtableResponseMsg)
@@ -202,11 +221,10 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 		cm.TransportMsg = dtableResponseMsg
 	default:
 		// must return unknownType error
-		fmt.Printf("GOT UNKNOWN!!!!!!! %x - %x\n", cm.Type, byte(cm.Type))
+		//fmt.Printf("GOT UNKNOWN!!!!!!! %x - %x\n", cm.Type, byte(cm.Type))
 		var rv dendrite.ErrHookUnknownType = "unknown request type"
 		return nil, rv
 	}
-
 	return cm, nil
 }
 
@@ -397,32 +415,12 @@ func localCommit(vn_table map[string]*value, key_str string, val *value) {
 }
 */
 // processDemoteKey() is called when our successor is demoting key to us
-// AFTER we took over the key and built new replicas
-// here we clear old replicas if necessary
-// at the end, we make a call to origin (old primary for this key) to clear demotedItem there
+// we fix replicas for the key and when we're done
+// we make a call to origin (old primary for this key) to clear demotedItem there
 func (dt *DTable) processDemoteKey(vnode, origin, old_master *dendrite.Vnode, reqItem *kvItem) {
 	// find the key in our primary table
 	key_str := reqItem.keyHashString()
 	if _, ok := dt.table[vnode.String()][key_str]; ok {
-		/*
-				// compare old replicas to active replicas
-				// replica depth is already updated across replicas when we wrote key to primary table
-				// if oldReplica.Id is not listed in active replicas - we need to remove that replica
-			OLD:
-				for _, oldReplica := range origItem.replicaInfo.vnodes {
-					for _, replica := range item.replicaInfo.vnodes {
-						if bytes.Compare(replica.Id, oldReplica.Id) == 0 {
-							continue OLD
-						}
-					}
-					// lets remove it
-					err := dt.remoteClearReplica(oldReplica, reqItem, false)
-					if err != nil {
-						log.Printf("processDemoteKey() - failed while removing old replica on %x for key %s\n", oldReplica.Id, key_str)
-						continue
-					}
-				}
-		*/
 		dt.replicateKey(vnode, reqItem, dt.ring.Replicas())
 
 		// now clear demoted item on origin
