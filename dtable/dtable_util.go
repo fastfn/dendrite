@@ -21,6 +21,9 @@ func (rinfo *kvReplicaInfo) to_protobuf() *PBDTableReplicaInfo {
 	}
 	pb_vnodes := make([]*dendrite.PBProtoVnode, 0)
 	for _, rvn := range rinfo.vnodes {
+		if rvn == nil {
+			continue
+		}
 		pb_vnodes = append(pb_vnodes, &dendrite.PBProtoVnode{
 			Host: proto.String(rvn.Host),
 			Id:   rvn.Id,
@@ -99,6 +102,20 @@ func (item *kvItem) to_demoted(new_master *dendrite.Vnode) *demotedKvItem {
 	rv.demoted_ts = time.Now()
 	return rv
 }
+
+func (item *kvItem) numActiveReplicas() int {
+	if item.replicaInfo == nil {
+		return 0
+	}
+	rv := 0
+	for _, r := range item.replicaInfo.vnodes {
+		if r != nil {
+			rv++
+		}
+	}
+	return rv
+}
+
 func (item *kvItem) dup() *kvItem {
 	new_item := new(kvItem)
 	new_item.timestamp = item.timestamp

@@ -3,7 +3,7 @@ package dendrite
 import (
 	"bytes"
 	//"fmt"
-	"log"
+	//"log"
 )
 
 // handles vnode operations
@@ -75,13 +75,14 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
 		var real_pred *Vnode
 
-		print_pred := &Vnode{}
-		if vn.old_predecessor != nil {
-			print_pred = vn.old_predecessor
-		}
+		/*
+			print_pred := &Vnode{}
+			if vn.old_predecessor != nil {
+				print_pred = vn.old_predecessor
+			}
 
-		log.Printf("Setting new predecessor for %X : %X -> %X\n", vn.Id, print_pred.Id, maybe_pred.Id)
-
+			log.Printf("Setting new predecessor for %X : %X -> %X\n", vn.Id, print_pred.Id, maybe_pred.Id)
+		*/
 		if vn.predecessor == nil {
 			if vn.old_predecessor != nil {
 				// need to check against old predecessor here
@@ -92,6 +93,9 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 		} else {
 			real_pred = vn.predecessor
 		}
+
+		// before emiting anything, lets update our remotes
+		vn.updateRemoteSuccessors()
 
 		if real_pred == nil || between(real_pred.Id, vn.Id, maybe_pred.Id, false) {
 			//log.Printf("JOIIINED: %X: %X -> %X\n", vn.Id, print_old.Id, new_pred.Id)

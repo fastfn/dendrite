@@ -192,7 +192,6 @@ func (r *Ring) init(config *Config, transport Transport) {
 	// 		vn.predecessor = &r.vnodes[i-1].Vnode
 	// 	}
 	// }
-
 	/*
 		go func() {
 			for {

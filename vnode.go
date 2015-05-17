@@ -161,17 +161,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 		}
 	}
 	// while we're here, ping other successors to make sure they're alive
-	for i := 0; i < len(vn.successors); i++ {
-		if vn.successors[i] == nil {
-			continue
-		}
-		alive, _ := vn.ring.transport.Ping(vn.successors[i])
-		if !alive {
-			//log.Printf("found inactive successor, removing it: %X\n", vn.successors[i].Id)
-			copy(vn.successors[i:], vn.successors[i+1:])
-			update_remotes = true
-		}
-	}
+	vn.fixLiveSuccessors()
 
 	// update remote successors if our list changed
 	if update_remotes {
@@ -180,13 +170,27 @@ func (vn *localVnode) checkNewSuccessor() error {
 	return nil
 }
 
+func (vn *localVnode) fixLiveSuccessors() {
+	live_successors := make([]*Vnode, vn.ring.config.NumSuccessors)
+	real_idx := 0
+	for _, succ := range vn.successors {
+		if succ == nil {
+			continue
+		}
+		if alive, _ := vn.ring.transport.Ping(succ); alive {
+			live_successors[real_idx] = succ
+			real_idx++
+		}
+	}
+	vn.successors = live_successors
+}
+
 // Notifies our successor of us, updates successor list
 func (vn *localVnode) notifySuccessor() error {
 	old_successors := make([]*Vnode, len(vn.successors))
 	copy(old_successors, vn.successors)
 	// Notify successor
 	succ := vn.successors[0]
-	//log.Printf("Notifying successor of us: %X -> %X\n", vn.Id, succ.Id)
 	succ_list, err := vn.ring.transport.Notify(succ, &vn.Vnode)
 	if err != nil {
 		return err
@@ -210,6 +214,9 @@ func (vn *localVnode) notifySuccessor() error {
 		//fmt.Printf("Updating successor from notifySuccessor(), %X -> %X\n", vn.Id, s.Id)
 		vn.successors[idx+1] = s
 	}
+	// remove inactive successors
+	vn.fixLiveSuccessors()
+
 	// lets see if our successor list changed
 	for idx, new_succ := range vn.successors {
 		if (new_succ == nil && old_successors[idx] != nil) ||
@@ -282,30 +289,30 @@ func (vn *localVnode) updateRemoteSuccessors() {
 	old_remotes := make([]*Vnode, vn.ring.Replicas())
 	copy(old_remotes, vn.remote_successors)
 
-	remotes, err := vn.findRemoteSuccessors(vn.ring.Replicas())
-	if err != nil {
-		log.Println("Error finding remote successors:", err)
-		return
-	}
-
+	remotes, _ := vn.findRemoteSuccessors(vn.ring.Replicas())
 	changed := false
 	for idx, remote := range remotes {
 		if remote != nil && old_remotes[idx] != nil {
 			if bytes.Compare(remote.Id, old_remotes[idx].Id) != 0 {
-				vn.remote_successors[idx] = remote
-				changed = true
+				if alive, _ := vn.ring.transport.Ping(remote); alive {
+					vn.remote_successors[idx] = remote
+					changed = true
+				}
 			}
 		} else if remote == nil && old_remotes[idx] != nil {
 			vn.remote_successors[idx] = remote
 			changed = true
 		} else if remote != nil && old_remotes[idx] == nil {
-			vn.remote_successors[idx] = remote
-			changed = true
+			if alive, _ := vn.ring.transport.Ping(remote); alive {
+				vn.remote_successors[idx] = remote
+				changed = true
+			}
 		} else {
 			// we're good
 		}
 	}
 	if changed {
+		log.Printf("Updated remote successors on: %s: %+v", vn.String(), vn.remote_successors)
 		ctx := &EventCtx{
 			EvType:   EvReplicasChanged,
 			Target:   &vn.Vnode,
@@ -343,10 +350,13 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 		if succ.Host == vn.Host {
 			continue
 		}
-		seen_hosts[succ.Host] = true
-		remote_succs[next_pos] = succ
-		next_pos++
-		num_appended++
+		// make sure host is alive
+		if alive, _ := vn.ring.transport.Ping(succ); alive {
+			seen_hosts[succ.Host] = true
+			remote_succs[next_pos] = succ
+			next_pos++
+			num_appended++
+		}
 	}
 
 	// forward through pivot successor until we reach the limit or detect loopback
@@ -359,7 +369,8 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 		}
 		next_successors, err := vn.ring.transport.FindSuccessors(pivot_succ, vn.ring.config.NumSuccessors, pivot_succ.Id)
 		if err != nil {
-			return nil, err
+			log.Println("Pivot successor returned error, returning what we have so far.")
+			return remote_succs, nil
 		}
 		for _, succ := range next_successors {
 			if num_appended == limit {
@@ -378,10 +389,12 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 				// we have this host already
 				continue
 			}
-			seen_hosts[succ.Host] = true
-			remote_succs[next_pos] = succ
-			next_pos++
-			num_appended++
+			if alive, _ := vn.ring.transport.Ping(succ); alive {
+				seen_hosts[succ.Host] = true
+				remote_succs[next_pos] = succ
+				next_pos++
+				num_appended++
+			}
 		}
 	}
 	return remote_succs, nil

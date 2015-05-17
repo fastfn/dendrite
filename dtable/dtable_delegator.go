@@ -18,10 +18,8 @@ func (dt *DTable) delegator() {
 				log.Printf("delegator() - predecessor left - promoting ourselves %s, status: ", event.Target.String())
 				// don't make the call just yet. Need to verify that peer is ready
 				if err := dt.checkPeer(event.Target); err != nil {
-					log.Printf("DELAYED\n")
 					go dt.replayEvent(event)
 				} else {
-					log.Printf("OK\n")
 					dt.promote(event.Target)
 				}
 			case dendrite.EvPredecessorJoined:
@@ -29,18 +27,27 @@ func (dt *DTable) delegator() {
 				// don't make the call just yet. Need to verify that peer is ready
 				if err := dt.checkPeer(event.PrimaryItem); err != nil {
 					// schedule for replay
-					log.Printf("DELAYED\n")
 					go dt.replayEvent(event)
 				} else {
-					log.Printf("OK\n")
 					dt.demote(event.Target, event.PrimaryItem)
 				}
 			case dendrite.EvReplicasChanged:
-				//log.Printf("delegator() - replicas changed on %s\n", event.Target.String())
-				//dt.changeReplicas(event.Target, event.ItemList)
-
-				//case EvPeerError:
-
+				log.Printf("delegator() - replicas changed on %s, status: ", event.Target.String())
+				safe := true
+				for _, remote := range event.ItemList {
+					if remote == nil {
+						continue
+					}
+					if err := dt.checkPeer(remote); err != nil {
+						safe = false
+						break
+					}
+				}
+				if !safe {
+					go dt.replayEvent(event)
+				} else {
+					dt.changeReplicas(event.Target, event.ItemList)
+				}
 			}
 
 			// TODO: handle case dendrite.EvPredecessorFailed
