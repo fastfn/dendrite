@@ -298,24 +298,19 @@ func (dt *DTable) zmq_promoteKey_handler(request *dendrite.ChordMsg, w chan *den
 	reqItem := new(kvItem)
 	reqItem.from_protobuf(pbMsg.GetItem())
 
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
+	// send out the event to delegator
+	ev := &dtableEvent{
+		evType: evPromoteKey,
+		vnode:  dendrite.VnodeFromProtobuf(pbMsg.GetDest()),
+		item:   reqItem,
 	}
+	dt.dtable_c <- ev
 
-	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
-	// make sure destination vnode exists locally
-	_, ok := dt.table[dest_key_str]
-	if !ok {
-		errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetReplicaHandler - local vnode table not found")
-		w <- errorMsg
-		return
-	}
+
 	setResp := &PBDTableResponse{
 		Ok: proto.Bool(true),
 	}
-	dt.setReplica(dest, reqItem)
 
 	// encode and send the response
 	pbdata, err := proto.Marshal(setResp)
@@ -328,6 +323,5 @@ func (dt *DTable) zmq_promoteKey_handler(request *dendrite.ChordMsg, w chan *den
 		Type: PbDtableResponse,
 		Data: pbdata,
 	}
-
 	return
 }

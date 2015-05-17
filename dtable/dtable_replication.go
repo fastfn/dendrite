@@ -6,6 +6,20 @@ import (
 	"log"
 )
 
+// promoteKey() -- called when remote wants to promote a key to us
+func (dt *DTable) promoteKey(vnode *dendrite.Vnode, reqItem *kvItem) {
+	rtable := dt.rtable[vnode.String()]
+	vn_table := dt.table[vnode.String()]
+	// if we're already primary node for this key, just replicate again because one replica could be deleted
+	if _, ok := vn_table[reqItem.keyHashString()]; ok {
+		dt.replicateKey(vnode, reqItem, dt.ring.Replicas())
+		return
+	}
+	delete(rtable, reqItem.keyHashString())
+	vn_table.put(reqItem)
+	dt.replicateKey(vnode, reqItem, dt.ring.Replicas())
+}
+
 // promote() - called when remote predecessor died or left the ring
 // because we're only first REMOTE node from original master
 // it doesn't mean that we're the actual successor for all the replicated data with depth 0

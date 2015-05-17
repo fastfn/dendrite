@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// delegator() - captures events from different sources
-//               and coordinates data delegation processes accordingly
+// delegator() - captures dendrite events as well as internal dtable events
+//               and synchronizes data operations
 func (dt *DTable) delegator() {
 	for {
 		select {
@@ -52,8 +52,12 @@ func (dt *DTable) delegator() {
 					log.Println("changeReplica() done on", event.Target.String())
 				}
 			}
-
-			// TODO: handle case dendrite.EvPredecessorFailed
+		case event := <-dt.dtable_c:
+			// internal event received
+			switch event.evType {
+			case evPromoteKey:
+				dt.promoteKey(event.vnode, event.item)
+			}
 		}
 	}
 

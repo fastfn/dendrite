@@ -392,28 +392,18 @@ func (dt *DTable) DumpStr() {
 	for vn_id, vn_table := range dt.table {
 		fmt.Printf("\tvnode: %s\n", vn_id)
 		for key, item := range vn_table {
-			fmt.Printf("\t\t%s - %s - %v\n", key, item.Val, item.commited)
+			fmt.Printf("\t\t%s - %s - %v\n", key, item.Val, item.replicaInfo.state)
 		}
 		rt, _ := dt.rtable[vn_id]
 		for key, item := range rt {
-			state := "out of sync"
-			if item.replicaInfo.state == replicaStable {
-				state = "in sync"
-			}
-			fmt.Printf("\t\t- r%d - %s - %s - %s\n", item.replicaInfo.depth, key, item.Val, state)
+			fmt.Printf("\t\t- r%d - %s - %s - %d\n", item.replicaInfo.depth, key, item.Val, item.replicaInfo.state)
+		}
+		for key, item := range dt.demoted_table[vn_id] {
+			fmt.Printf("\t\t- d - %s - %s - %v\n", key, item.new_master.String(), item.demoted_ts)
 		}
 	}
 }
 
-/*
-func localCommit(vn_table map[string]*value, key_str string, val *value) {
-	if val.Val != nil {
-		item, _ := vn_table[key_str]
-		item.commited = true
-		vn_table[key_str] = item
-	}
-}
-*/
 // processDemoteKey() is called when our successor is demoting key to us
 // we fix replicas for the key and when we're done
 // we make a call to origin (old primary for this key) to clear demotedItem there
