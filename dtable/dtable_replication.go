@@ -7,86 +7,7 @@ import (
 	"sync"
 )
 
-// if node left, maintain consistency by finding local replicas and push them one step further if possible
-// if node joined, find all keys in local tables that are < new_pred, copy them to new_pred and strip last replica for them
-//                 for other keys, just copy them to all replicas as we might be in deficite
-func (dt *DTable) Delegate(localVn, new_pred *dendrite.Vnode, event dendrite.RingEventType, mux sync.Mutex) {
-	// get the handler for this vnode
-	_, ok := dt.transport.GetVnodeHandler(localVn)
-	if !ok {
-		// can't do this
-		return
-	}
 
-	//vn_table, _ := dt.table[localVn.String()]
-
-	switch event {
-	case dendrite.EvPredecessorLeft:
-		dt.promote(localVn)
-	case dendrite.EvPredecessorJoined:
-		dt.demote(localVn, new_pred)
-		/*
-			log.Printf("Node joined me: %X  ... %X replicating to:\n", localVn.Id, new_pred.Id)
-			for _, r := range replicas {
-				log.Printf("\t - %X\n", r.Id)
-			}
-			// find all local keys that are < new predecessor
-			for key_str, val := range vn_table {
-				key, _ := hex.DecodeString(key_str)
-				if dendrite.Between(key, localVn.Id, new_pred.Id, true) {
-					// copy the key to new predecessor
-					done_c := make(chan error)
-					go dt.remoteSet(new_pred, key, val, 0, done_c)
-					err := <-done_c
-					if err != nil {
-						log.Println("Dendrite::Delegate -- failed to delegate key to new predecessor:", err)
-						continue
-					}
-					// remove the key from last replica unless last replica is our new predecessor
-					if len(replicas) == 0 {
-						continue
-					}
-					last_replica = replicas[len(replicas)-1]
-					if last_replica.Host == new_pred.Host {
-						continue
-					}
-					go dt.remoteSet(last_replica, key, nil, 0, done_c)
-					err = <-done_c
-					if err != nil {
-						log.Println("Dendrite::Delegate - failed to strip key from last replica:", err)
-					}
-				} else {
-					//for _, replica := range replicas {
-					// err := dt.remoteSet(replica, key, val.Val)
-					// if err != nil {
-					// 	log.Println("Dendrite::Delegate -- failed to propagate key to replica:", err)
-					// }
-					//}
-				}
-			}
-		*/
-	default:
-		return
-	}
-}
-
-/*
-type rvalue struct {
-	Val           []byte
-	timestamp     time.Time
-	depth         int
-	state         replicaState
-	master        *dendrite.Vnode
-	replicaVnodes []*dendrite.Vnode
-}
-
-type value struct {
-	Val       []byte
-	timestamp time.Time
-	isReplica bool
-	commited  bool
-	rstate    replicaState
-}
 */
 // promote() - called when remote predecessor died or left the ring
 // because we're only first REMOTE node from original master
@@ -203,53 +124,9 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 // changeReplicas() -- callend when replica set changes
 //
 func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite.Vnode) {
-	// loop over primary table and get replicaVnodes
-	// loop over replicaVnodes and remove each
-	// loop over new_replicas and push each
-	// write metadata
 	for _, item := range dt.table[vnode.String()] {
 		dt.replicateKey(vnode, item, dt.ring.Replicas())
 	}
-
-	// write new replicas
-
-	/*
-		real_idx := 0
-		success_replicas := make([]*dendrite.Vnode, dt.ring.Replicas())
-		for _, remote := range new_replicas {
-			if remote == nil {
-				continue
-			}
-			log.Printf("replicating %s to: %x\n", key_str, remote.Id)
-			new_ritem := item.dup()
-			new_ritem.replicaInfo.state = replicaIncomplete
-			new_ritem.commited = false
-			new_ritem.replicaInfo.depth = real_idx
-
-			if err := dt.remoteWriteReplica(vnode, remote, new_ritem); err != nil {
-				log.Printf("changeReplicas() - error writing replica %s for key %s - %s\n", remote.String(), key_str, err.Error())
-				continue
-			}
-			success_replicas[real_idx] = remote
-			real_idx++
-		}
-		copy(item.replicaInfo.vnodes, success_replicas)
-
-		// replicas have been written, lets now update metadata
-		for idx, replica := range success_replicas {
-			if replica == nil {
-				continue
-			}
-			new_ritem := item.dup()
-			new_ritem.replicaInfo.depth = idx
-			new_ritem.replicaInfo.state = replicaStable
-			err := dt.remoteSetReplicaInfo(replica, new_ritem)
-			if err != nil {
-				break
-			}
-		}
-	*/
-
 }
 
 func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int) {
