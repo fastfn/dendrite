@@ -235,8 +235,7 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 		return nil, err
 	}
 	// check if successor exists in local dtable
-	vn_key_str := fmt.Sprintf("%x", succs[0].Id)
-	vn_table, ok := dt.table[vn_key_str]
+	vn_table, ok := dt.table[succs[0].String()]
 	if ok {
 		key_str := reqItem.keyHashString()
 		if item, exists := vn_table[key_str]; exists {

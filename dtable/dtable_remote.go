@@ -528,7 +528,7 @@ func (dt *DTable) remotePromoteKey(origin, remote *dendrite.Vnode, reqItem *kvIt
 	go func() {
 		req_sock, err := zmq_transport.ZMQContext.NewSocket(zmq.REQ)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - newsocket error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - newsocket error - %s", err)
 			return
 		}
 		req_sock.SetRcvtimeo(5 * time.Second)
@@ -537,7 +537,7 @@ func (dt *DTable) remotePromoteKey(origin, remote *dendrite.Vnode, reqItem *kvIt
 		defer req_sock.Close()
 		err = req_sock.Connect("tcp://" + remote.Host)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - connect error - %s", err)
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - connect error - %s", err)
 			return
 		}
 		// Build request protobuf
@@ -552,29 +552,29 @@ func (dt *DTable) remotePromoteKey(origin, remote *dendrite.Vnode, reqItem *kvIt
 		}
 
 		reqData, _ := proto.Marshal(req)
-		encoded := dt.transport.Encode(PbDtableStatus, reqData)
+		encoded := dt.transport.Encode(PbDtablePromoteKey, reqData)
 		_, err = req_sock.SendBytes(encoded, 0)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - error while sending request - %s", err)
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - error while sending request - %s", err)
 			return
 		}
 
 		// read response and decode it
 		resp, err := req_sock.RecvBytes(0)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - error while reading response - %s", err)
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - error while reading response - %s", err)
 			return
 		}
 		decoded, err := dt.transport.Decode(resp)
 		if err != nil {
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - error while decoding response - %s", err)
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - error while decoding response - %s", err)
 			return
 		}
 
 		switch decoded.Type {
 		case dendrite.PbErr:
 			pbMsg := decoded.TransportMsg.(dendrite.PBProtoErr)
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - got error response - %s", pbMsg.GetError())
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - got error response - %s", pbMsg.GetError())
 		case PbDtableResponse:
 			pbMsg := decoded.TransportMsg.(PBDTableResponse)
 			success := pbMsg.GetOk()
@@ -582,18 +582,18 @@ func (dt *DTable) remotePromoteKey(origin, remote *dendrite.Vnode, reqItem *kvIt
 				resp_c <- true
 				return
 			}
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - error - %s", pbMsg.GetError())
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - error - %s", pbMsg.GetError())
 			return
 		default:
 			// unexpected response
-			error_c <- fmt.Errorf("ZMQ:DTable:remoteStatus - unexpected response")
+			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - unexpected response")
 			return
 		}
 	}()
 
 	select {
 	case <-time.After(zmq_transport.ClientTimeout):
-		return fmt.Errorf("ZMQ:DTable:remoteStatus - command timed out!")
+		return fmt.Errorf("ZMQ:DTable:remotePromoteKey - command timed out!")
 	case err := <-error_c:
 		return err
 	case _ = <-resp_c:

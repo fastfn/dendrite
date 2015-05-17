@@ -19,7 +19,7 @@ message PBDTableReplicaInfo {
 }
 
 message PBDTableItem {
-	required bytes key = 1;
+	optional bytes key = 1;
 	optional bytes val = 2;
 	optional int64 timestamp = 3;
 	optional bool commited = 4;

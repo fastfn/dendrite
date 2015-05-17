@@ -121,7 +121,7 @@ func (m *PBDTableReplicaInfo) GetDepth() int32 {
 }
 
 type PBDTableItem struct {
-	Key              []byte                 `protobuf:"bytes,1,req,name=key" json:"key,omitempty"`
+	Key              []byte                 `protobuf:"bytes,1,opt,name=key" json:"key,omitempty"`
 	Val              []byte                 `protobuf:"bytes,2,opt,name=val" json:"val,omitempty"`
 	Timestamp        *int64                 `protobuf:"varint,3,opt,name=timestamp" json:"timestamp,omitempty"`
 	Commited         *bool                  `protobuf:"varint,4,opt,name=commited" json:"commited,omitempty"`

@@ -294,7 +294,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 }
 
 func (dt *DTable) zmq_promoteKey_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
-	pbMsg := request.TransportMsg.(PBDTableSetItem)
+	pbMsg := request.TransportMsg.(PBDTablePromoteKey)
 	reqItem := new(kvItem)
 	reqItem.from_protobuf(pbMsg.GetItem())
 

@@ -48,6 +48,10 @@ func (q *Query) Get(key []byte) (*KVItem, error) {
 	if err != nil {
 		return nil, err
 	}
+	if item == nil {
+		return nil, nil
+	}
+
 	return &item.KVItem, nil
 }
 

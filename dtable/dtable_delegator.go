@@ -56,6 +56,7 @@ func (dt *DTable) delegator() {
 			// internal event received
 			switch event.evType {
 			case evPromoteKey:
+				log.Printf("delegator() - promotekey() event - on %s, for key %s", event.vnode.String(), event.item.keyHashString())
 				dt.promoteKey(event.vnode, event.item)
 			}
 		}
