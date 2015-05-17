@@ -21,6 +21,7 @@ func (dt *DTable) delegator() {
 					go dt.replayEvent(event)
 				} else {
 					dt.promote(event.Target)
+					log.Println("promote() done on", event.Target.String())
 				}
 			case dendrite.EvPredecessorJoined:
 				log.Printf("delegator() - predecessor joined - demoting keys to new predecessor %s, status: ", event.Target.String())
@@ -30,6 +31,7 @@ func (dt *DTable) delegator() {
 					go dt.replayEvent(event)
 				} else {
 					dt.demote(event.Target, event.PrimaryItem)
+					log.Println("demoting done on", event.Target.String())
 				}
 			case dendrite.EvReplicasChanged:
 				log.Printf("delegator() - replicas changed on %s, status: ", event.Target.String())
@@ -47,6 +49,7 @@ func (dt *DTable) delegator() {
 					go dt.replayEvent(event)
 				} else {
 					dt.changeReplicas(event.Target, event.ItemList)
+					log.Println("changeReplica() done on", event.Target.String())
 				}
 			}
 

@@ -91,7 +91,6 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	pbMsg := request.TransportMsg.(PBDTableSetItem)
 	reqItem := new(kvItem)
 	reqItem.from_protobuf(pbMsg.GetItem())
-	orig_item := reqItem.dup()
 	demoting := pbMsg.GetDemoting()
 	minAcks := int(pbMsg.GetMinAcks())
 	dest := &dendrite.Vnode{
@@ -102,11 +101,10 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		Id:   pbMsg.GetOrigin().GetId(),
 		Host: pbMsg.GetOrigin().GetHost(),
 	}
-	fmt.Printf("SETHANDLER CALLED from %s to %s for key %s\n", origin.String(), dest.String(), reqItem.keyHashString())
+
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
-	success := true
-	//fmt.Printf("SET() HANDLER CALLED # key: %s, dest: %s, demoting: %v, minAcks: %d\n", reqItem.keyHashString(), dest.String(), demoting, minAcks)
+
 	// make sure destination vnode exists locally
 	_, ok := dt.table[dest_key_str]
 	if !ok {
@@ -118,21 +116,28 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 		Ok: proto.Bool(false),
 	}
 
-	wait := make(chan error)
-	go dt.set(dest, reqItem, minAcks, wait)
-	err := <-wait
-	if err != nil {
-		setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
-		success = false
-	} else {
+	if demoting {
+		old_master := reqItem.replicaInfo.master
+		reqItem.replicaInfo.master = dest
+		err := dt.table[dest_key_str].put(reqItem)
+		if err != nil {
+			errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetHandler - demote received error on - " + err.Error())
+			w <- errorMsg
+			return
+		}
+		go dt.processDemoteKey(dest, origin, old_master, reqItem)
 		setResp.Ok = proto.Bool(true)
+	} else {
+		wait := make(chan error)
+		go dt.set(dest, reqItem, minAcks, wait)
+		err := <-wait
+		if err != nil {
+			setResp.Error = proto.String("ZMQ::DTable::SetHandler - error executing transaction - " + err.Error())
+		} else {
+			setResp.Ok = proto.Bool(true)
+		}
 	}
 
-	// trigger demote callback if everything's good
-	// processDemoteKey will rearange replicas if necessary
-	if success && demoting {
-		go dt.processDemoteKey(dest, origin, reqItem, orig_item)
-	}
 	// encode and send the response
 	pbdata, err := proto.Marshal(setResp)
 	if err != nil {

@@ -1,7 +1,7 @@
 package dtable
 
 import (
-	"bytes"
+	//"bytes"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
@@ -59,6 +59,29 @@ type demotedKvItem struct {
 
 type itemMap map[string]*kvItem
 type demotedItemMap map[string]*demotedKvItem
+
+func (m itemMap) put(item *kvItem) error {
+	if oldItem, ok := m[item.keyHashString()]; ok {
+		if oldItem.timestamp.UnixNano() <= item.timestamp.UnixNano() {
+			// key exists but the record is older than new one
+			if item.Val == nil {
+				delete(m, item.keyHashString())
+			} else {
+				m[item.keyHashString()] = item
+			}
+		} else {
+			return fmt.Errorf("map.put() refused write for key %s. Record too old: %d > %d",
+				item.keyHashString(), oldItem.timestamp.UnixNano(), item.timestamp.UnixNano())
+		}
+	} else {
+		if item.Val != nil {
+			m[item.keyHashString()] = item
+		} else {
+			return fmt.Errorf("map.put() - empty value not allowed")
+		}
+	}
+	return nil
+}
 
 type DTable struct {
 	// base structures
@@ -222,8 +245,10 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 func (dt *DTable) setReplica(vnode *dendrite.Vnode, item *kvItem) {
 	key_str := item.keyHashString()
 	if item.Val == nil {
+		log.Println("SetReplica() - value for key", key_str, "is nil, removing item")
 		delete(dt.rtable[vnode.String()], key_str)
 	} else {
+		log.Println("SetReplica() - success for key", key_str)
 		dt.rtable[vnode.String()][key_str] = item
 	}
 }
@@ -245,31 +270,16 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	}
 	write_count := 0
 	vn_table, _ := dt.table[vn.String()]
-	key_str := item.keyHashString()
+	//key_str := item.keyHashString()
 
 	//item.lock.Lock()
 	//defer item.lock.Unlock()
 
-	// see if key exists with older timestamp
-	if oldItem, ok := vn_table[key_str]; ok {
-		if oldItem.timestamp.UnixNano() <= item.timestamp.UnixNano() {
-			// key exists but the record is older than new one
-			if item.Val == nil {
-				delete(vn_table, key_str)
-			} else {
-				item.replicaInfo.master = vn
-				vn_table[key_str] = item
-			}
-		} else {
-			done <- fmt.Errorf("set() refused write for key %s. Record too old: %d > %d",
-				key_str, oldItem.timestamp.UnixNano(), item.timestamp.UnixNano())
-			return
-		}
-	} else {
-		if item.Val != nil {
-			item.replicaInfo.master = vn
-			vn_table[key_str] = item
-		}
+	item.replicaInfo.master = vn
+	err := vn_table.put(item)
+	if err != nil {
+		done <- err
+		return
 	}
 
 	write_count += 1
@@ -300,10 +310,10 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		done <- fmt.Errorf("could not find enough replica nodes due to error %s", err)
 		return
 	}
-	log.Printf("Looking up remote replicas for %x\n", vn.Id)
-	for _, rep := range remote_succs {
-		log.Printf("\t - %x\n", rep.Id)
-	}
+	//log.Printf("Looking up remote replicas for %x\n", vn.Id)
+	//for _, rep := range remote_succs {
+	//	log.Printf("\t - %x\n", rep.Id)
+	//}
 	// now lets write replicas
 	item_replicas := make([]*dendrite.Vnode, 0)
 	repwrite_count := 0
@@ -390,27 +400,31 @@ func localCommit(vn_table map[string]*value, key_str string, val *value) {
 // AFTER we took over the key and built new replicas
 // here we clear old replicas if necessary
 // at the end, we make a call to origin (old primary for this key) to clear demotedItem there
-func (dt *DTable) processDemoteKey(vnode, origin *dendrite.Vnode, reqItem, origItem *kvItem) {
+func (dt *DTable) processDemoteKey(vnode, origin, old_master *dendrite.Vnode, reqItem *kvItem) {
 	// find the key in our primary table
 	key_str := reqItem.keyHashString()
-	if item, ok := dt.table[vnode.String()][key_str]; ok {
-		// compare old replicas to active replicas
-		// replica depth is already updated across replicas when we wrote key to primary table
-		// if oldReplica.Id is not listed in active replicas - we need to remove that replica
-	OLD:
-		for _, oldReplica := range origItem.replicaInfo.vnodes {
-			for _, replica := range item.replicaInfo.vnodes {
-				if bytes.Compare(replica.Id, oldReplica.Id) == 0 {
-					continue OLD
+	if _, ok := dt.table[vnode.String()][key_str]; ok {
+		/*
+				// compare old replicas to active replicas
+				// replica depth is already updated across replicas when we wrote key to primary table
+				// if oldReplica.Id is not listed in active replicas - we need to remove that replica
+			OLD:
+				for _, oldReplica := range origItem.replicaInfo.vnodes {
+					for _, replica := range item.replicaInfo.vnodes {
+						if bytes.Compare(replica.Id, oldReplica.Id) == 0 {
+							continue OLD
+						}
+					}
+					// lets remove it
+					err := dt.remoteClearReplica(oldReplica, reqItem, false)
+					if err != nil {
+						log.Printf("processDemoteKey() - failed while removing old replica on %x for key %s\n", oldReplica.Id, key_str)
+						continue
+					}
 				}
-			}
-			// lets remove it
-			err := dt.remoteClearReplica(oldReplica, reqItem, false)
-			if err != nil {
-				log.Printf("processDemoteKey() - failed while removing old replica on %x for key %s\n", oldReplica.Id, key_str)
-				continue
-			}
-		}
+		*/
+		dt.replicateKey(vnode, reqItem, dt.ring.Replicas())
+
 		// now clear demoted item on origin
 		err := dt.remoteClearReplica(origin, reqItem, true)
 		if err != nil {

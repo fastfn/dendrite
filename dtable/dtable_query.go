@@ -66,6 +66,8 @@ func (q *Query) Set(key, val []byte) error {
 	reqItem.keyHash = dendrite.HashKey(key)
 	reqItem.timestamp = time.Now()
 	reqItem.replicaInfo = new(kvReplicaInfo)
+	reqItem.replicaInfo.vnodes = make([]*dendrite.Vnode, q.dt.ring.Replicas())
+	reqItem.replicaInfo.orphan_vnodes = make([]*dendrite.Vnode, 0)
 
 	wait := make(chan error)
 	succs, err := q.dt.ring.Lookup(1, reqItem.keyHash)

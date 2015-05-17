@@ -113,11 +113,13 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 			new_ritem.replicaInfo.vnodes[0] = nil
 			new_ritem.commited = true
 			vn_table[key_str] = new_ritem
-			log.Printf("Promoted local key: %s - running replicator now", key_str)
+			log.Printf("Promoted local key: %s - running replicator now replicas are %+v \n", key_str, new_ritem.replicaInfo.vnodes)
 			delete(rtable, key_str)
+			log.Printf("Promote calling replicateKey for key %s\n", key_str)
 			dt.replicateKey(vnode, new_ritem, dt.ring.Replicas())
+			log.Printf("Promote finishing key %s, replicaVnodes are: %+v\n", key_str, new_ritem.replicaInfo.vnodes)
 		} else {
-			// promote remote vnode
+			// TODO promote remote vnode
 			delete(rtable, key_str)
 		}
 	}
@@ -205,34 +207,13 @@ func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite
 	// loop over replicaVnodes and remove each
 	// loop over new_replicas and push each
 	// write metadata
-	vn_table := dt.table[vnode.String()]
-	new_replica_len := 0
-	for _, r := range new_replicas {
-		if r != nil {
-			new_replica_len++
-		}
+	for _, item := range dt.table[vnode.String()] {
+		dt.replicateKey(vnode, item, dt.ring.Replicas())
 	}
-	for key_str, item := range vn_table {
-		// remove existing replicas
-		for idx, existing := range item.replicaInfo.vnodes {
-			if existing == nil {
-				continue
-			}
 
-			if err := dt.remoteClearReplica(existing, item, false); err != nil {
-				// add to orphans
-				// TODO
-				// after adding to orphans remove that item from vnodes
-				// item.replicaInfo.vnodes[idx] = nil
-				log.Printf("changeReplicas() - (1) error removing existing replica %s for key %s, - %s", existing.String(), key_str, err.Error())
-			} else {
-				item.replicaInfo.vnodes[idx] = nil
-			}
-		}
-		if len(item.replicaInfo.vnodes) == 0 {
-			item.replicaInfo.vnodes = make([]*dendrite.Vnode, dt.ring.Replicas())
-		}
-		// write new replicas
+	// write new replicas
+
+	/*
 		real_idx := 0
 		success_replicas := make([]*dendrite.Vnode, dt.ring.Replicas())
 		for _, remote := range new_replicas {
@@ -267,7 +248,7 @@ func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite
 				break
 			}
 		}
-	}
+	*/
 
 }
 
@@ -281,10 +262,39 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 	if err != nil {
 		return
 	}
+
+	// first, lets remove existing replicas
+	for idx, existing := range reqItem.replicaInfo.vnodes {
+		if existing == nil {
+			continue
+		}
+		if err := dt.remoteClearReplica(existing, reqItem, false); err != nil {
+			// lets add this replica to orphans
+			reqItem.replicaInfo.orphan_vnodes = append(reqItem.replicaInfo.orphan_vnodes, existing)
+			reqItem.replicaInfo.vnodes[idx] = nil
+			continue
+		} else {
+			reqItem.replicaInfo.vnodes[idx] = nil
+		}
+	}
+
+	// we set replicaState to stable if enough remote successors are found
+	// otherwise, replicaState is still stable, but partial
+	// if any of replica writes fail later on, we'll set the state to Incomplete
+	var new_replica_state replicaState
+	if len(remote_succs) >= dt.ring.Replicas() {
+		new_replica_state = replicaStable
+	} else {
+		new_replica_state = replicaPartial
+	}
+
 	// now lets write replicas
-	item_replicas := make([]*dendrite.Vnode, 0)
+	new_replicas := make([]*dendrite.Vnode, 0)
 
 	for _, succ := range remote_succs {
+		if succ == nil {
+			continue
+		}
 		log.Printf("replicating to: %x\n", succ.Id)
 		new_ritem := reqItem.dup()
 		new_ritem.replicaInfo.state = replicaIncomplete
@@ -292,35 +302,41 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 
 		err := dt.remoteWriteReplica(vnode, succ, new_ritem)
 		if err != nil {
-			return
+			log.Printf("Error writing replica to %s for key %s due to error: %s\n", succ.String(), new_ritem.keyHashString(), err.Error())
+			new_replica_state = replicaIncomplete
+			continue
 		}
-		item_replicas = append(item_replicas, succ)
+		new_replicas = append(new_replicas, succ)
 	}
 
-	// replicas have been written, lets now update metadata
-	for idx, replica := range item_replicas {
+	// update metadata on original item
+	reqItem.replicaInfo.vnodes = make([]*dendrite.Vnode, limit)
+	for idx, new_replica := range new_replicas {
+		reqItem.replicaInfo.vnodes[idx] = new_replica
+	}
+	reqItem.replicaInfo.state = new_replica_state
+
+	// update metadata on successful replicas
+	for idx, replica := range reqItem.replicaInfo.vnodes {
+		if replica == nil {
+			break
+		}
 		new_ritem := reqItem.dup()
 		new_ritem.replicaInfo.depth = idx
-		new_ritem.replicaInfo.state = replicaStable
-		new_ritem.replicaInfo.vnodes = item_replicas
+		new_ritem.replicaInfo.state = new_replica_state
 
 		err := dt.remoteSetReplicaInfo(replica, new_ritem)
 		if err != nil {
-			break
+			// this should not happen. It means another replica node failed in the meantime
+			// need to trigger orphan cleaner, which will restart this process
+			reqItem.replicaInfo.state = replicaIncomplete
+			reqItem.replicaInfo.vnodes[idx] = nil
+			reqItem.replicaInfo.orphan_vnodes = append(reqItem.replicaInfo.orphan_vnodes, replica)
+			continue
 		}
 	}
 }
 
 /*
-func rvalue2value(rval *rvalue) *value {
-	data := make([]byte, len(rval.Val))
-	copy(data, rval.Val)
-	return &value{
-		Val:       data,
-		timestamp: rval.timestamp,
-		isReplica: false,
-		commited:  false,
-		rstate:    replicaIncomplete,
-	}
-}
+orphan cleaner after removing orhpans restarts replicateKey() if key's replica state is Incomplete
 */
