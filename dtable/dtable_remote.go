@@ -31,12 +31,8 @@ func (dt *DTable) remoteGet(remote *dendrite.Vnode, reqItem *kvItem) (*kvItem, b
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
 		req := &PBDTableGetItem{
-			Dest:    dest,
+			Dest:    remote.ToProtobuf(),
 			KeyHash: reqItem.keyHash,
 		}
 
@@ -118,18 +114,9 @@ func (dt *DTable) remoteSet(origin, remote *dendrite.Vnode, reqItem *kvItem, min
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-		origin := &dendrite.PBProtoVnode{
-			Host: proto.String(origin.Host),
-			Id:   origin.Id,
-		}
-
 		req := &PBDTableSetItem{
-			Origin:   origin,
-			Dest:     dest,
+			Origin:   origin.ToProtobuf(),
+			Dest:     remote.ToProtobuf(),
 			Item:     reqItem.to_protobuf(),
 			MinAcks:  proto.Int32(int32(minAcks)),
 			Demoting: proto.Bool(demoting),
@@ -207,16 +194,10 @@ func (dt *DTable) remoteSetReplicaInfo(remote *dendrite.Vnode, reqItem *kvItem) 
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-		pb_reqItem := reqItem.to_protobuf()
-
 		req := &PBDTableSetReplicaInfo{
-			Dest:        dest,
+			Dest:        remote.ToProtobuf(),
 			KeyHash:     reqItem.keyHash,
-			ReplicaInfo: pb_reqItem.GetReplicaInfo(),
+			ReplicaInfo: reqItem.replicaInfo.to_protobuf(),
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -291,13 +272,8 @@ func (dt *DTable) remoteClearReplica(remote *dendrite.Vnode, reqItem *kvItem, de
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-
 		req := &PBDTableClearReplica{
-			Dest:    dest,
+			Dest:    remote.ToProtobuf(),
 			KeyHash: reqItem.keyHash,
 			Demoted: proto.Bool(demoted),
 		}
@@ -374,17 +350,9 @@ func (dt *DTable) remoteWriteReplica(origin, remote *dendrite.Vnode, reqItem *kv
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-		origin := &dendrite.PBProtoVnode{
-			Host: proto.String(origin.Host),
-			Id:   origin.Id,
-		}
 		req := &PBDTableSetItem{
-			Origin: origin,
-			Dest:   dest,
+			Origin: origin.ToProtobuf(),
+			Dest:   remote.ToProtobuf(),
 			Item:   reqItem.to_protobuf(),
 		}
 
@@ -460,13 +428,8 @@ func (dt *DTable) remoteStatus(remote *dendrite.Vnode) error {
 			return
 		}
 		// Build request protobuf
-		dest := &dendrite.PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-
 		req := &PBDTableStatus{
-			Dest: dest,
+			Dest: remote.ToProtobuf(),
 		}
 
 		reqData, _ := proto.Marshal(req)
@@ -540,15 +503,12 @@ func (dt *DTable) remotePromoteKey(origin, remote *dendrite.Vnode, reqItem *kvIt
 			error_c <- fmt.Errorf("ZMQ:DTable:remotePromoteKey - connect error - %s", err)
 			return
 		}
-		// Build request protobuf
-		dest := remote.ToProtobuf()
-		origin_pb := origin.ToProtobuf()
-		item := reqItem.to_protobuf()
 
+		// Build request protobuf
 		req := &PBDTablePromoteKey{
-			Dest:   dest,
-			Origin: origin_pb,
-			Item:   item,
+			Dest:   remote.ToProtobuf(),
+			Origin: origin.ToProtobuf(),
+			Item:   reqItem.to_protobuf(),
 		}
 
 		reqData, _ := proto.Marshal(req)

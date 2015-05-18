@@ -11,11 +11,7 @@ import (
 func (dt *DTable) zmq_status_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableStatus)
 
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
-
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 
@@ -46,10 +42,7 @@ func (dt *DTable) zmq_status_handler(request *dendrite.ChordMsg, w chan *dendrit
 func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableGetItem)
 	keyHash := pbMsg.GetKeyHash()
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 
@@ -93,15 +86,8 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	reqItem.from_protobuf(pbMsg.GetItem())
 	demoting := pbMsg.GetDemoting()
 	minAcks := int(pbMsg.GetMinAcks())
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
-	origin := &dendrite.Vnode{
-		Id:   pbMsg.GetOrigin().GetId(),
-		Host: pbMsg.GetOrigin().GetHost(),
-	}
-
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
+	origin := dendrite.VnodeFromProtobuf(pbMsg.GetOrigin())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 
@@ -157,14 +143,10 @@ func (dt *DTable) zmq_setReplica_handler(request *dendrite.ChordMsg, w chan *den
 	pbMsg := request.TransportMsg.(PBDTableSetItem)
 	reqItem := new(kvItem)
 	reqItem.from_protobuf(pbMsg.GetItem())
-
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
-
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
+
 	// make sure destination vnode exists locally
 	_, ok := dt.table[dest_key_str]
 	if !ok {
@@ -196,11 +178,7 @@ func (dt *DTable) zmq_setReplicaInfo_handler(request *dendrite.ChordMsg, w chan 
 	pbMsg := request.TransportMsg.(PBDTableSetReplicaInfo)
 	rInfo := replicaInfo_from_protobuf(pbMsg.GetReplicaInfo())
 	keyHash := pbMsg.GetKeyHash()
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
-
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 
@@ -241,10 +219,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 	pbMsg := request.TransportMsg.(PBDTableClearReplica)
 	keyHash := pbMsg.GetKeyHash()
 	demoted := pbMsg.GetDemoted()
-	dest := &dendrite.Vnode{
-		Id:   pbMsg.GetDest().GetId(),
-		Host: pbMsg.GetDest().GetHost(),
-	}
+	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)
 

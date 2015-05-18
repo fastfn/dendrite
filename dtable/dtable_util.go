@@ -16,26 +16,17 @@ func (item *kvItem) keyHashString() string {
 }
 
 func (rinfo *kvReplicaInfo) to_protobuf() *PBDTableReplicaInfo {
-	pb_master := &dendrite.PBProtoVnode{
-		Host: proto.String(rinfo.master.Host),
-		Id:   rinfo.master.Id,
-	}
+	pb_master := rinfo.master.ToProtobuf()
 	pb_vnodes := make([]*dendrite.PBProtoVnode, 0)
 	for _, rvn := range rinfo.vnodes {
 		if rvn == nil {
 			continue
 		}
-		pb_vnodes = append(pb_vnodes, &dendrite.PBProtoVnode{
-			Host: proto.String(rvn.Host),
-			Id:   rvn.Id,
-		})
+		pb_vnodes = append(pb_vnodes, rvn.ToProtobuf())
 	}
 	pb_orphanVnodes := make([]*dendrite.PBProtoVnode, 0)
 	for _, ovn := range rinfo.orphan_vnodes {
-		pb_orphanVnodes = append(pb_orphanVnodes, &dendrite.PBProtoVnode{
-			Host: proto.String(ovn.Host),
-			Id:   ovn.Id,
-		})
+		pb_orphanVnodes = append(pb_orphanVnodes, ovn.ToProtobuf())
 	}
 	return &PBDTableReplicaInfo{
 		Master:       pb_master,
@@ -51,28 +42,20 @@ func replicaInfo_from_protobuf(pb *PBDTableReplicaInfo) *kvReplicaInfo {
 		return nil
 	}
 	rInfo := new(kvReplicaInfo)
-	rInfo.master = &dendrite.Vnode{
-		Id:   pb.GetMaster().GetId(),
-		Host: pb.GetMaster().GetHost(),
-	}
+	rInfo.master = dendrite.VnodeFromProtobuf(pb.GetMaster())
 	rInfo.vnodes = make([]*dendrite.Vnode, 0)
 	for _, pb_vnode := range pb.GetVnodes() {
-		rInfo.vnodes = append(rInfo.vnodes, &dendrite.Vnode{
-			Id:   pb_vnode.GetId(),
-			Host: pb_vnode.GetHost(),
-		})
+		rInfo.vnodes = append(rInfo.vnodes, dendrite.VnodeFromProtobuf(pb_vnode))
 	}
 	rInfo.orphan_vnodes = make([]*dendrite.Vnode, 0)
 	for _, pb_orphanVnode := range pb.GetOrphanVnodes() {
-		rInfo.orphan_vnodes = append(rInfo.orphan_vnodes, &dendrite.Vnode{
-			Id:   pb_orphanVnode.GetId(),
-			Host: pb_orphanVnode.GetHost(),
-		})
+		rInfo.orphan_vnodes = append(rInfo.orphan_vnodes, dendrite.VnodeFromProtobuf(pb_orphanVnode))
 	}
 	rInfo.state = replicaState(int(pb.GetState()))
 	rInfo.depth = int(pb.GetDepth())
 	return rInfo
 }
+
 func (item *kvItem) to_protobuf() *PBDTableItem {
 	rv := &PBDTableItem{
 		Key:       item.Key,

@@ -239,7 +239,7 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
-				vnodes[idx] = &Vnode{Id: pbVnode.GetId(), Host: pbVnode.GetHost()}
+				vnodes[idx] = VnodeFromProtobuf(pbVnode)
 			}
 			resp_c <- vnodes
 			return
@@ -283,12 +283,8 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 			return
 		}
 		// Build request protobuf
-		dest := &PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
 		req := &PBProtoFindSuccessors{
-			Dest:  dest,
+			Dest:  remote.ToProtobuf(),
 			Key:   key,
 			Limit: proto.Int32(int32(limit)),
 		}
@@ -319,17 +315,13 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 			return
 		case PbForward:
 			pbMsg := decoded.TransportMsg.(PBProtoForward)
-			vnode := &Vnode{
-				Id:   pbMsg.GetVnode().GetId(),
-				Host: pbMsg.GetVnode().GetHost(),
-			}
-			forward_c <- vnode
+			forward_c <- VnodeFromProtobuf(pbMsg.GetVnode())
 			return
 		case PbListVnodesResp:
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
-				vnodes[idx] = &Vnode{Id: pbVnode.GetId(), Host: pbVnode.GetHost()}
+				vnodes[idx] = VnodeFromProtobuf(pbVnode)
 			}
 			resp_c <- vnodes
 			return
@@ -373,12 +365,8 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 			return
 		}
 		// Build request protobuf
-		dest := &PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
 		req := &PBProtoGetPredecessor{
-			Dest: dest,
+			Dest: remote.ToProtobuf(),
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(PbGetPredecessor, reqData)
@@ -407,7 +395,7 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 			return
 		case PbProtoVnode:
 			pbMsg := decoded.TransportMsg.(PBProtoVnode)
-			resp_c <- &Vnode{Host: pbMsg.GetHost(), Id: pbMsg.GetId()}
+			resp_c <- VnodeFromProtobuf(&pbMsg)
 			return
 		default:
 			// unexpected response
@@ -448,17 +436,9 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 		}
 
 		// Build request protobuf
-		dest := &PBProtoVnode{
-			Host: proto.String(remote.Host),
-			Id:   remote.Id,
-		}
-		self_pbvn := &PBProtoVnode{
-			Host: proto.String(self.Host),
-			Id:   self.Id,
-		}
 		req := &PBProtoNotify{
-			Dest:  dest,
-			Vnode: self_pbvn,
+			Dest:  remote.ToProtobuf(),
+			Vnode: self.ToProtobuf(),
 		}
 		reqData, _ := proto.Marshal(req)
 		encoded := transport.Encode(PbNotify, reqData)
@@ -489,7 +469,7 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 			pbMsg := decoded.TransportMsg.(PBProtoListVnodesResp)
 			vnodes := make([]*Vnode, len(pbMsg.GetVnodes()))
 			for idx, pbVnode := range pbMsg.GetVnodes() {
-				vnodes[idx] = &Vnode{Id: pbVnode.GetId(), Host: pbVnode.GetHost()}
+				vnodes[idx] = VnodeFromProtobuf(pbVnode)
 			}
 			resp_c <- vnodes
 			return
