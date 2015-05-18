@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"time"
-	//"log"
 )
 
 type queryType int

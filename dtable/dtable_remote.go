@@ -97,7 +97,7 @@ func (dt *DTable) remoteGet(remote *dendrite.Vnode, reqItem *kvItem) (*kvItem, b
 
 // Client Request: set value for a key to remote host
 func (dt *DTable) remoteSet(origin, remote *dendrite.Vnode, reqItem *kvItem, minAcks int, demoting bool, done chan error) {
-	fmt.Printf("REMOTESET CALLED from %s to %s for key %s\n", origin.String(), remote.String(), reqItem.keyHashString())
+	//fmt.Printf("REMOTESET CALLED from %s to %s for key %s\n", origin.String(), remote.String(), reqItem.keyHashString())
 	error_c := make(chan error, 1)
 	resp_c := make(chan bool, 1)
 	zmq_transport := dt.transport.(*dendrite.ZMQTransport)

@@ -3,7 +3,6 @@ package dtable
 import (
 	"bytes"
 	"github.com/fastfn/dendrite"
-	"log"
 )
 
 // promoteKey() -- called when remote wants to promote a key to us
@@ -36,8 +35,7 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 		// check if we're real successor for this key
 		succs, err := dt.ring.Lookup(1, ritem.keyHash)
 		if err != nil {
-			// TODO: call promote() again if temporary issue
-			log.Printf("Could not promote key, Lookup() failed: %s\n", err.Error())
+			dt.Logf(LogInfo, "Could not promote key, Lookup() failed: %s\n", err.Error())
 			continue
 		}
 		if bytes.Compare(succs[0].Id, vnode.Id) == 0 {
@@ -46,14 +44,14 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 			new_ritem.replicaInfo.vnodes[0] = nil
 			new_ritem.commited = true
 			vn_table[key_str] = new_ritem
-			log.Printf("Promoted local key: %s - running replicator now replicas are %+v \n", key_str, new_ritem.replicaInfo.vnodes)
+			dt.Logf(LogDebug, "Promoted local key: %s - running replicator now replicas are %+v \n", key_str, new_ritem.replicaInfo.vnodes)
 			delete(rtable, key_str)
-			log.Printf("Promote calling replicateKey for key %s\n", key_str)
+			dt.Logf(LogDebug, "Promote calling replicateKey for key %s\n", key_str)
 			dt.replicateKey(vnode, new_ritem, dt.ring.Replicas())
-			log.Printf("Promote finishing key %s, replicaVnodes are: %+v\n", key_str, new_ritem.replicaInfo.vnodes)
+			dt.Logf(LogDebug, "Promote finishing key %s, replicaVnodes are: %+v\n", key_str, new_ritem.replicaInfo.vnodes)
 		} else {
 			// TODO promote remote vnode
-			log.Printf("Promoting remote vnode %s for key %s\n", succs[0].String(), key_str)
+			dt.Logf(LogDebug, "Promoting remote vnode %s for key %s\n", succs[0].String(), key_str)
 			delete(rtable, key_str)
 			dt.remotePromoteKey(vnode, succs[0], ritem)
 		}
@@ -107,7 +105,7 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 
 				err := dt.remoteSetReplicaInfo(replica, new_ritem)
 				if err != nil {
-					log.Println("Error updating replicaMeta on demote() -", err)
+					dt.Logf(LogInfo, "Error updating replicaMeta on demote() -", err)
 					new_state = replicaIncomplete
 					continue
 				}
@@ -126,7 +124,7 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 				go dt.remoteSet(vnode, new_pred, item, dt.ring.Replicas(), true, done_c)
 				err := <-done_c
 				if err != nil {
-					log.Println("Error demoting key to new predecessor -", err)
+					dt.Logln(LogInfo, "Error demoting key to new predecessor -", err)
 					continue
 				}
 			}
@@ -186,14 +184,14 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 		if succ == nil {
 			continue
 		}
-		log.Printf("replicating to: %x\n", succ.Id)
+		dt.Logf(LogDebug, "replicating to: %x\n", succ.Id)
 		new_ritem := reqItem.dup()
 		new_ritem.replicaInfo.state = replicaIncomplete
 		new_ritem.commited = false
 
 		err := dt.remoteWriteReplica(vnode, succ, new_ritem)
 		if err != nil {
-			log.Printf("Error writing replica to %s for key %s due to error: %s\n", succ.String(), new_ritem.keyHashString(), err.Error())
+			dt.Logf(LogInfo, "Error writing replica to %s for key %s due to error: %s\n", succ.String(), new_ritem.keyHashString(), err.Error())
 			new_replica_state = replicaIncomplete
 			continue
 		}

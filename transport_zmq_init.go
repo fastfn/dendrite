@@ -115,7 +115,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 				case msg == workerRegisterReq:
 					if len(workers) == transport.maxHandlers {
 						comm.worker_in <- workerRegisterDenied
-						log.Println("ERR: TransportListener - max number of workers reached")
+						log.Println("[DENDRITE][INFO]: TransportListener - max number of workers reached")
 						continue
 					}
 					if _, ok := workers[comm]; ok {
@@ -124,7 +124,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 					}
 					comm.worker_in <- workerRegisterAllowed
 					workers[comm] = true
-					log.Println("INFO: TransportListener - registered new worker, total:", len(workers))
+					log.Println("[DENDRITE][INFO]: TransportListener - registered new worker, total:", len(workers))
 				case msg == workerShutdownReq:
 					//log.Println("Got shutdown req")
 					if len(workers) > transport.minHandlers {
@@ -160,12 +160,12 @@ func (transport *ZMQTransport) zmq_worker() {
 	// setup REP socket
 	rep_sock, err := transport.zmq_context.NewSocket(zmq.REP)
 	if err != nil {
-		log.Println("ERR: TransportListener worker failed to create REP socket", err)
+		log.Println("[DENDRITE][ERROR]: TransportListener worker failed to create REP socket", err)
 		return
 	}
 	err = rep_sock.Connect("inproc://dendrite-zmqdealer")
 	if err != nil {
-		log.Println("ERR: TransportListener worker failed to connect to dealer", err)
+		log.Println("[DENDRITE][ERROR]: TransportListener worker failed to connect to dealer", err)
 		return
 	}
 
@@ -201,7 +201,7 @@ func (transport *ZMQTransport) zmq_worker() {
 			for _, socket := range sockets {
 				rawmsg, err := socket.Socket.RecvBytes(0)
 				if err != nil {
-					log.Println("ERR: TransportListener error while reading from REP, ", err)
+					log.Println("[DENDRITE][ERROR]: TransportListener error while reading from REP, ", err)
 					continue
 				}
 				// decode raw data
@@ -253,7 +253,7 @@ func (transport *ZMQTransport) zmq_worker() {
 				close(comm.worker_out)
 				cancel_c <- true
 				close(cancel_c)
-				log.Println("TransportListener: worker shutdown")
+				log.Println("[DENDRITE][INFO]: TransportListener: worker shutdown")
 				return
 			}
 		case <-ticker.C:
@@ -262,7 +262,7 @@ func (transport *ZMQTransport) zmq_worker() {
 			transport.control_c <- comm
 			v := <-comm.worker_in
 			if v == workerShutdownAllowed {
-				log.Println("TransportListener: worker shutdown due to idle state")
+				log.Println("[DENDRITE][INFO]: TransportListener: worker shutdown due to idle state")
 				close(comm.worker_out)
 				cancel_c <- true
 				close(cancel_c)

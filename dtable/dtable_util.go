@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
+	"log"
 	"time"
 )
 
@@ -143,4 +144,50 @@ func (item *kvItem) dup() *kvItem {
 		new_item.replicaInfo = nil
 	}
 	return new_item
+}
+
+type LogLevel int
+
+const (
+	LogNull  LogLevel = 0
+	LogInfo  LogLevel = 1
+	LogDebug LogLevel = 2
+)
+
+func (dt *DTable) Logf(level LogLevel, format string, v ...interface{}) {
+	if level == LogNull {
+		return
+	}
+	var new_format string
+	if level == LogInfo {
+		new_format = "[DTABLE][INFO] " + format
+	} else if level == LogDebug {
+		new_format = "[DTABLE][DEBUG] " + format
+	}
+
+	if dt.confLogLevel == LogDebug {
+		log.Printf(new_format, v...)
+	} else if dt.confLogLevel == LogInfo && level == LogInfo {
+		log.Printf(new_format, v...)
+	}
+}
+
+func (dt *DTable) Logln(level LogLevel, v ...interface{}) {
+	if level == LogNull {
+		return
+	}
+
+	var new_format string
+	if level == LogInfo {
+		new_format = "[DTABLE][INFO]"
+	} else if level == LogDebug {
+		new_format = "[DTABLE][DEBUG]"
+	}
+	if dt.confLogLevel == LogDebug {
+		v = append([]interface{}{new_format}, v...)
+		log.Println(v...)
+	} else if dt.confLogLevel == LogInfo && level == LogInfo {
+		v = append([]interface{}{new_format}, v...)
+		log.Println(v...)
+	}
 }

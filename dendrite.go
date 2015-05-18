@@ -3,7 +3,7 @@ package dendrite
 import (
 	"bytes"
 	"fmt"
-	//"log"
+	"log"
 	"sort"
 	"time"
 )
@@ -78,8 +78,9 @@ type Config struct {
 	NumVnodes     int // num of vnodes to create
 	StabilizeMin  time.Duration
 	StabilizeMax  time.Duration
-	NumSuccessors int // number of successor to keep in self log
-	Replicas      int // number of replicas to keep by default
+	NumSuccessors int      // number of successor to keep in self log
+	Replicas      int      // number of replicas to keep by default
+	LogLevel      LogLevel // logLevel, 0 = info, 1 = debug
 }
 
 func DefaultConfig(hostname string) *Config {
@@ -93,6 +94,46 @@ func DefaultConfig(hostname string) *Config {
 		StabilizeMax:  3 * time.Second,
 		NumSuccessors: 8, // number of known successors to keep track with
 		Replicas:      2,
+		LogLevel:      LogInfo,
+	}
+}
+
+type LogLevel int
+
+const (
+	LogNull  LogLevel = 0
+	LogInfo  LogLevel = 1
+	LogDebug LogLevel = 2
+)
+
+func (r *Ring) Logf(level LogLevel, format string, v ...interface{}) {
+	var new_format string
+	if level == LogInfo {
+		new_format = "[DENDRITE][INFO] " + format
+	} else if level == LogDebug {
+		new_format = "[DENDRITE][DEBUG] " + format
+	}
+
+	if r.config.LogLevel == LogDebug {
+		log.Printf(new_format, v...)
+	} else if r.config.LogLevel == LogInfo && level == LogInfo {
+		log.Printf(new_format, v...)
+	}
+}
+
+func (r *Ring) Logln(level LogLevel, v ...interface{}) {
+	var new_format string
+	if level == LogInfo {
+		new_format = "[DENDRITE][INFO]"
+	} else if level == LogDebug {
+		new_format = "[DENDRITE][DEBUG]"
+	}
+	if r.config.LogLevel == LogDebug {
+		v = append([]interface{}{new_format}, v...)
+		log.Println(v...)
+	} else if r.config.LogLevel == LogInfo && level == LogInfo {
+		v = append([]interface{}{new_format}, v...)
+		log.Println(v...)
 	}
 }
 
@@ -327,30 +368,6 @@ type EventCtx struct {
 	ResponseCh    chan interface{}
 }
 
-/*
-func (r *Ring) Delegate(localVn, old_pred, new_pred *Vnode, mux sync.Mutex) {
-	// we have new predecessor, lets figure out what happened
-	var ev RingEventType
-	print_old := &Vnode{}
-	if old_pred != nil {
-		print_old = old_pred
-	}
-	if old_pred == nil || between(old_pred.Id, localVn.Id, new_pred.Id, false) {
-		fmt.Printf("JOIIINED: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
-		ev = EvPredecessorJoined
-	} else {
-		fmt.Printf("LEEEEEFT: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
-		ev = EvPredecessorLeft
-	}
-	// call registered delegate hooks.. if any
-
-	for _, dh := range r.delegateHooks {
-
-		//fmt.Printf("scheduling delegate: %X: -> %X\n", localVn.Id, new_pred.Id)
-		//go dh.Delegate(localVn, new_pred, ev, mux)
-	}
-}
-*/
 func (r *Ring) emit(ctx *EventCtx) {
 	for _, dh := range r.delegateHooks {
 		go dh.EmitEvent(ctx)

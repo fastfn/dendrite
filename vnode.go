@@ -74,22 +74,22 @@ func (vn *localVnode) stabilize() {
 
 	start := time.Now()
 	if err := vn.checkNewSuccessor(); err != nil {
-		log.Println("[stabilize] Error checking successor:", err)
+		vn.ring.Logln(LogDebug, "stabilize() - error checking successor:", err)
 	}
 	//log.Printf("CheckSucc returned for %X - %X\n", vn.Id, vn.successors[0].Id)
 
 	// Notify the successor
 	if err := vn.notifySuccessor(); err != nil {
-		log.Println("[stabilize] Error notifying successor:", err)
+		vn.ring.Logln(LogDebug, "stabilize() - error notifying successor:", err)
 	}
 	//log.Printf("NotifySucc returned for %X\n", vn.Id)
 
 	if err := vn.fixFingerTable(); err != nil {
-		log.Println("[stabilize] Error fixing finger table, last:", time.Since(start), vn.last_finger, err)
+		vn.ring.Logln(LogDebug, "stabilize() - error fixing finger table, last:", time.Since(start), vn.last_finger, err)
 	}
 
 	if err := vn.checkPredecessor(); err != nil {
-		log.Printf("[stabilize] Predecessor failed for %X - %s\n", vn.Id, err)
+		vn.ring.Logf(LogInfo, "stabilize() predecessor failed for %X - %s\n", vn.Id, err)
 	}
 	//log.Println("[stabilize] completed in", time.Since(start))
 }
@@ -152,7 +152,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 		// Ask our successor for it's predecessor
 		maybe_suc, err := vn.ring.transport.GetPredecessor(vn.successors[0])
 		if err != nil {
-			log.Println("[stabilize]... trying next known successor due to error:", err)
+			vn.ring.Logln(LogDebug, "stabilize::checkNewSuccessor() trying next known successor due to error:", err)
 			copy(vn.successors[0:], vn.successors[1:])
 			update_remotes = true
 			continue
@@ -164,7 +164,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 				copy(vn.successors[1:], vn.successors[0:len(vn.successors)-1])
 				vn.successors[0] = maybe_suc
 				update_remotes = true
-				log.Printf("[stabilize] new successor set: %X -> %X\n", vn.Id, maybe_suc.Id)
+				vn.ring.Logf(LogInfo, "stabilize::checkNewSuccessor() - new successor set: %X -> %X\n", vn.Id, maybe_suc.Id)
 			} else {
 				// skip this one, it's not alive
 				//log.Println("[stabilize] new successor found, but it's not alive")
@@ -257,7 +257,7 @@ func (vn *localVnode) checkPredecessor() error {
 	if vn.predecessor != nil {
 		ok, err := vn.ring.transport.Ping(vn.predecessor)
 		if err != nil || !ok {
-			log.Println("[stabilize] detected predecessor failure")
+			vn.ring.Logln(LogInfo, "stabilize::checkPredecessor() - detected predecessor failure")
 			vn.old_predecessor = vn.predecessor
 			vn.predecessor = nil
 			return err
@@ -327,7 +327,7 @@ func (vn *localVnode) updateRemoteSuccessors() {
 		}
 	}
 	if changed {
-		log.Printf("Updated remote successors on: %s: %+v", vn.String(), vn.remote_successors)
+		vn.ring.Logf(LogDebug, "updateRemoteSuccessors() - updated on: %s: %+v", vn.String(), vn.remote_successors)
 		ctx := &EventCtx{
 			EvType:   EvReplicasChanged,
 			Target:   &vn.Vnode,
@@ -384,7 +384,7 @@ func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 		}
 		next_successors, err := vn.ring.transport.FindSuccessors(pivot_succ, vn.ring.config.NumSuccessors, pivot_succ.Id)
 		if err != nil {
-			log.Println("Pivot successor returned error, returning what we have so far.")
+			//vn.ring.Logln(LogDebug, "Pivot successor returned error, returning what we have so far.")
 			return remote_succs, nil
 		}
 		for _, succ := range next_successors {

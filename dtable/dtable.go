@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
-	"log"
 	"sync"
 	"time"
 )
@@ -56,6 +55,7 @@ type DTable struct {
 	demoted_table map[string]demotedItemMap
 	ring          *dendrite.Ring
 	transport     dendrite.Transport
+	confLogLevel  LogLevel
 	// communication channels
 	event_c  chan *dendrite.EventCtx // dendrite sends events here
 	dtable_c chan *dtableEvent       // internal dtable events
@@ -104,13 +104,14 @@ func (m itemMap) put(item *kvItem) error {
 	return nil
 }
 
-func Init(ring *dendrite.Ring, transport dendrite.Transport) *DTable {
+func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DTable {
 	dt := &DTable{
 		table:         make(map[string]itemMap),
 		rtable:        make(map[string]itemMap),
 		demoted_table: make(map[string]demotedItemMap),
 		ring:          ring,
 		transport:     transport,
+		confLogLevel:  level,
 		event_c:       make(chan *dendrite.EventCtx),
 		dtable_c:      make(chan *dtableEvent),
 	}
@@ -250,7 +251,7 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 		respItem, _, err := dt.remoteGet(succ, reqItem)
 		if err != nil {
 			last_err = err
-			log.Println("ZMQ::remoteGet error - ", err)
+			dt.Logln(LogDebug, "ZMQ::remoteGet error - ", err)
 			continue
 		}
 		return respItem, nil
@@ -262,10 +263,10 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 func (dt *DTable) setReplica(vnode *dendrite.Vnode, item *kvItem) {
 	key_str := item.keyHashString()
 	if item.Val == nil {
-		log.Println("SetReplica() - value for key", key_str, "is nil, removing item")
+		//log.Println("SetReplica() - value for key", key_str, "is nil, removing item")
 		delete(dt.rtable[vnode.String()], key_str)
 	} else {
-		log.Println("SetReplica() - success for key", key_str)
+		//log.Println("SetReplica() - success for key", key_str)
 		dt.rtable[vnode.String()][key_str] = item
 	}
 }
@@ -308,7 +309,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 			item.replicaInfo.state = replicaStable
 			item.commited = true
 		}
-		log.Printf("Returning set to user because %d == %d\n", minAcks, write_count)
+		//log.Printf("Returning set to user because %d == %d\n", minAcks, write_count)
 		done <- nil
 		returned = true
 	}
@@ -327,10 +328,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		done <- fmt.Errorf("could not find enough replica nodes due to error %s", err)
 		return
 	}
-	//log.Printf("Looking up remote replicas for %x\n", vn.Id)
-	//for _, rep := range remote_succs {
-	//	log.Printf("\t - %x\n", rep.Id)
-	//}
+
 	// now lets write replicas
 	item_replicas := make([]*dendrite.Vnode, 0)
 	repwrite_count := 0
@@ -340,7 +338,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		if repwrite_count+1 == minAcks && !returned {
 			returned = true
 			item.commited = true
-			log.Printf("Returning set to user because %d == %d == %d\n", repwrite_count+1, minAcks, write_count)
+			//log.Printf("Returning set to user because %d == %d == %d\n", repwrite_count+1, minAcks, write_count)
 			done <- nil
 		}
 		newItem := item.dup()
@@ -415,10 +413,10 @@ func (dt *DTable) processDemoteKey(vnode, origin, old_master *dendrite.Vnode, re
 		// now clear demoted item on origin
 		err := dt.remoteClearReplica(origin, reqItem, true)
 		if err != nil {
-			log.Printf("processDemoteKey() - failed while removing demoted key from origin %x for key %s\n", origin.Id, key_str)
+			dt.Logf(LogInfo, "processDemoteKey() - failed while removing demoted key from origin %x for key %s\n", origin.Id, key_str)
 		}
 	} else {
-		log.Println("processDemoteKey failed - key not found:", key_str)
+		dt.Logln(LogInfo, "processDemoteKey failed - key not found:", key_str)
 		return
 	}
 }

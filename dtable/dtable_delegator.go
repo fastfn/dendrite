@@ -3,7 +3,6 @@ package dtable
 import (
 	//"fmt"
 	"github.com/fastfn/dendrite"
-	"log"
 	"time"
 )
 
@@ -15,26 +14,26 @@ func (dt *DTable) delegator() {
 		case event := <-dt.event_c:
 			switch event.EvType {
 			case dendrite.EvPredecessorLeft:
-				log.Printf("delegator() - predecessor left - promoting ourselves %s, status: ", event.Target.String())
+				dt.Logf(LogDebug, "delegator() - predecessor left - promoting ourselves %s, status: ", event.Target.String())
 				// don't make the call just yet. Need to verify that peer is ready
 				if err := dt.checkPeer(event.Target); err != nil {
 					go dt.replayEvent(event)
 				} else {
 					dt.promote(event.Target)
-					log.Println("promote() done on", event.Target.String())
+					dt.Logln(LogDebug, "promote() done on", event.Target.String())
 				}
 			case dendrite.EvPredecessorJoined:
-				log.Printf("delegator() - predecessor joined - demoting keys to new predecessor %s, status: ", event.Target.String())
+				dt.Logf(LogDebug, "delegator() - predecessor joined - demoting keys to new predecessor %s, status: ", event.Target.String())
 				// don't make the call just yet. Need to verify that peer is ready
 				if err := dt.checkPeer(event.PrimaryItem); err != nil {
 					// schedule for replay
 					go dt.replayEvent(event)
 				} else {
 					dt.demote(event.Target, event.PrimaryItem)
-					log.Println("demoting done on", event.Target.String())
+					dt.Logln(LogDebug, "demoting done on", event.Target.String())
 				}
 			case dendrite.EvReplicasChanged:
-				log.Printf("delegator() - replicas changed on %s, status: ", event.Target.String())
+				dt.Logf(LogDebug, "delegator() - replicas changed on %s, status: ", event.Target.String())
 				safe := true
 				for _, remote := range event.ItemList {
 					if remote == nil {
@@ -49,14 +48,14 @@ func (dt *DTable) delegator() {
 					go dt.replayEvent(event)
 				} else {
 					dt.changeReplicas(event.Target, event.ItemList)
-					log.Println("changeReplica() done on", event.Target.String())
+					dt.Logln(LogDebug, "changeReplica() done on", event.Target.String())
 				}
 			}
 		case event := <-dt.dtable_c:
 			// internal event received
 			switch event.evType {
 			case evPromoteKey:
-				log.Printf("delegator() - promotekey() event - on %s, for key %s", event.vnode.String(), event.item.keyHashString())
+				dt.Logf(LogDebug, "delegator() - promotekey() event - on %s, for key %s", event.vnode.String(), event.item.keyHashString())
 				dt.promoteKey(event.vnode, event.item)
 			}
 		}
@@ -70,7 +69,7 @@ func (dt *DTable) checkPeer(remote *dendrite.Vnode) error {
 
 // replayEvent() is called when remote node does not have dtable initialized
 func (dt *DTable) replayEvent(event *dendrite.EventCtx) {
-	log.Println("- replayEvent scheduled")
+	dt.Logln(LogDebug, "- replayEvent scheduled")
 	time.Sleep(5 * time.Second)
 	dt.EmitEvent(event)
 }
