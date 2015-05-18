@@ -7,6 +7,8 @@ Features:
  - dtable: in-memory KV store implementation
 
 Todo:
- - force all internal ops to use Query interface (and build internal query interface) in dtable
  - write more/better documentation
- - support batches on various operations
+ - dtable: support SetMulti() and GetMulti() on public interface
+ - dendrite: add some kind of security for inter communication between nodes
+ - dtable: support batches on replication/migration ops
+
