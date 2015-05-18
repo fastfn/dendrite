@@ -57,8 +57,9 @@ type DTable struct {
 	transport     dendrite.Transport
 	confLogLevel  LogLevel
 	// communication channels
-	event_c  chan *dendrite.EventCtx // dendrite sends events here
-	dtable_c chan *dtableEvent       // internal dtable events
+	event_c     chan *dendrite.EventCtx // dendrite sends events here
+	dtable_c    chan *dtableEvent       // internal dtable events
+	selfcheck_t *time.Ticker
 }
 
 const (
@@ -114,6 +115,7 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DT
 		confLogLevel:  level,
 		event_c:       make(chan *dendrite.EventCtx),
 		dtable_c:      make(chan *dtableEvent),
+		selfcheck_t:   time.NewTicker(10 * time.Second),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {

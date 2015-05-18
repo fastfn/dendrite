@@ -58,6 +58,10 @@ func (dt *DTable) delegator() {
 				dt.Logf(LogDebug, "delegator() - promotekey() event - on %s, for key %s", event.vnode.String(), event.item.keyHashString())
 				dt.promoteKey(event.vnode, event.item)
 			}
+		case <-dt.selfcheck_t.C:
+			dt.Logln(LogDebug, "delegator() - selfcheck() started")
+			dt.selfCheck()
+			dt.Logln(LogDebug, "delegator() - selfcheck() completed")
 		}
 	}
 
@@ -72,4 +76,9 @@ func (dt *DTable) replayEvent(event *dendrite.EventCtx) {
 	dt.Logln(LogDebug, "- replayEvent scheduled")
 	time.Sleep(5 * time.Second)
 	dt.EmitEvent(event)
+}
+
+func (dt *DTable) selfCheck() {
+	//check for orphaned keys
+	//check for demoted keys
 }
