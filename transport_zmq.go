@@ -1,12 +1,10 @@
 package dendrite
 
 import (
-	"github.com/golang/protobuf/proto"
-	zmq "github.com/pebbe/zmq4"
-	//"log"
-	//"sync"
 	"bytes"
 	"fmt"
+	"github.com/golang/protobuf/proto"
+	zmq "github.com/pebbe/zmq4"
 	"time"
 )
 
@@ -526,6 +524,5 @@ func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	//log.Println("Got pong with version:", pongMsg.GetVersion())
 	return true, nil
 }

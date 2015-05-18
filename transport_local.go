@@ -1,9 +1,6 @@
 package dendrite
 
 import (
-	//"bytes"
-	//"fmt"
-	//"log"
 	"sync"
 )
 

@@ -1,10 +1,7 @@
 package dendrite
 
 import (
-	//"bytes"
-	//"fmt"
 	"github.com/golang/protobuf/proto"
-	//	"log"
 )
 
 func (transport *ZMQTransport) zmq_ping_handler(request *ChordMsg, w chan *ChordMsg) {

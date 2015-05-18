@@ -225,7 +225,3 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 		}
 	}
 }
-
-/*
-orphan cleaner after removing orhpans restarts replicateKey() if key's replica state is Incomplete
-*/

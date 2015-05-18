@@ -224,15 +224,6 @@ func (r *Ring) init(config *Config, transport Transport) {
 		vn.init(i)
 	}
 	sort.Sort(r)
-
-	// for i := 0; i < config.NumVnodes; i++ {
-	// 	vn := r.vnodes[i]
-	// 	if i == 0 {
-	// 		vn.predecessor = &r.vnodes[config.NumVnodes-1].Vnode
-	// 	} else {
-	// 		vn.predecessor = &r.vnodes[i-1].Vnode
-	// 	}
-	// }
 	/*
 		go func() {
 			for {

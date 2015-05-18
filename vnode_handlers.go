@@ -75,14 +75,6 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
 		var real_pred *Vnode
 
-		/*
-			print_pred := &Vnode{}
-			if vn.old_predecessor != nil {
-				print_pred = vn.old_predecessor
-			}
-
-			log.Printf("Setting new predecessor for %X : %X -> %X\n", vn.Id, print_pred.Id, maybe_pred.Id)
-		*/
 		if vn.predecessor == nil {
 			if vn.old_predecessor != nil {
 				// need to check against old predecessor here
@@ -98,7 +90,6 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 		vn.updateRemoteSuccessors()
 
 		if real_pred == nil || between(real_pred.Id, vn.Id, maybe_pred.Id, false) {
-			//log.Printf("JOIIINED: %X: %X -> %X\n", vn.Id, print_old.Id, new_pred.Id)
 			ctx := &EventCtx{
 				EvType:        EvPredecessorJoined,
 				Target:        &vn.Vnode,
@@ -107,7 +98,6 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 			}
 			vn.ring.emit(ctx)
 		} else {
-			//log.Printf("LEEEEEFT: %X: %X -> %X\n", localVn.Id, print_old.Id, new_pred.Id)
 			ctx := &EventCtx{
 				EvType:        EvPredecessorLeft,
 				Target:        &vn.Vnode,
@@ -118,7 +108,7 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 		}
 
 		// maybe we're just joining and one of our local vnodes is closer to us than this predecessor
-		//vn.ring.Delegate(&vn.Vnode, vn.old_predecessor, maybe_pred, vn.delegateMux)
+		vn.ring.Logf(LogInfo, "vn.Notify() - setting new predecessor for %x: %x\n", vn.Id, maybe_pred.Id)
 		vn.predecessor = maybe_pred
 	}
 
