@@ -88,6 +88,9 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 		// move all replica keys to new vnode
 		vn_rtable := dt.rtable[vnode.String()]
 		for rkey, ritem := range vn_rtable {
+			if !ritem.commited {
+				continue
+			}
 			ritem.replicaInfo.vnodes[ritem.replicaInfo.depth] = new_pred
 			dt.rtable[new_pred.String()][rkey] = ritem
 			delete(vn_rtable, rkey)
@@ -115,6 +118,9 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 		// loop over primary table to find keys that should belong to new predecessor
 		vn_table := dt.table[vnode.String()]
 		for key_str, item := range vn_table {
+			if !item.commited {
+				continue
+			}
 			if dendrite.Between(vnode.Id, new_pred.Id, item.keyHash, true) {
 				//log.Printf("Analyzed key for demoting %s and pushing to %s\n", key_str, new_pred.String())
 				// copy the key to demoted table and remove it from primary one
@@ -137,6 +143,9 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 //
 func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite.Vnode) {
 	for _, item := range dt.table[vnode.String()] {
+		if !item.commited {
+			continue
+		}
 		dt.replicateKey(vnode, item, dt.ring.Replicas())
 	}
 }

@@ -241,7 +241,7 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 	vn_table, ok := dt.table[succs[0].String()]
 	if ok {
 		key_str := reqItem.keyHashString()
-		if item, exists := vn_table[key_str]; exists {
+		if item, exists := vn_table[key_str]; exists && item.commited {
 			return item.dup(), nil
 		} else {
 			return nil, fmt.Errorf("not found")
@@ -269,19 +269,18 @@ func (dt *DTable) setReplica(vnode *dendrite.Vnode, item *kvItem) {
 		delete(dt.rtable[vnode.String()], key_str)
 	} else {
 		//log.Println("SetReplica() - success for key", key_str)
+		item.commited = true
 		dt.rtable[vnode.String()][key_str] = item
 	}
 }
 
-// set() writes to table. It is called from both DTable api and by remote clients via zmq
-// writes: total writes to execute
-// reports back on done ch when ready
-// handles local write
-func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan error) {
-	// write to as many "acks" as was requested
-	// if acks is lower than number of replicas, send signal to done chan after writing to n writes
-	// but continue with writing to the rest of replicas
+/* set writes to dtable's primary(non-replica table). It is called from both Query api and
+by remote clients via zmq.
 
+It reports back on done chan when minAcks is reached so that clients can continue without
+blocking while replication takes place.
+*/
+func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan error) {
 	// make sure we have local handler before doing any write
 	handler, _ := dt.transport.GetVnodeHandler(vn)
 	if handler == nil {
@@ -290,7 +289,6 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	}
 	write_count := 0
 	vn_table, _ := dt.table[vn.String()]
-	//key_str := item.keyHashString()
 
 	//item.lock.Lock()
 	//defer item.lock.Unlock()
@@ -302,88 +300,103 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		return
 	}
 
-	write_count += 1
+	if dt.ring.Replicas() <= write_count+1 {
+
+	}
+	write_count++
+	repwrite_count := 0
 	returned := false
+	item.replicaInfo.state = replicaIncomplete
 
 	// should we return to client immediately?
 	if minAcks == write_count {
-		if dt.ring.Replicas() == write_count {
+		// cover the case where ring.Replicas() returns 0
+		if dt.ring.Replicas() == repwrite_count {
 			item.replicaInfo.state = replicaStable
 			item.commited = true
+			done <- nil
+			return
 		}
-		//log.Printf("Returning set to user because %d == %d\n", minAcks, write_count)
+		item.commited = true
 		done <- nil
 		returned = true
-	}
-	if dt.ring.Replicas() == 0 {
-		item.replicaInfo.state = replicaStable
-		item.commited = true
-		if !returned {
-			done <- nil
-		}
-		return
 	}
 
 	// find remote successors to write replicas to
 	remote_succs, err := handler.FindRemoteSuccessors(dt.ring.Replicas())
 	if err != nil {
-		done <- fmt.Errorf("could not find enough replica nodes due to error %s", err)
+		if !returned {
+			done <- fmt.Errorf("could not find replica nodes due to error %s", err)
+		}
+		dt.Logf(LogDebug, "could not find replica nodes due to error %s\n", err)
+		return
+	}
+
+	// don't write any replica if not enough replica nodes have been found for requested consistency
+	if minAcks > len(remote_succs)+1 {
+		done <- fmt.Errorf("insufficient nodes found for requested consistency level (%d)\n", minAcks)
 		return
 	}
 
 	// now lets write replicas
 	item_replicas := make([]*dendrite.Vnode, 0)
-	repwrite_count := 0
+	repl_item := item.dup()
+	repl_item.commited = false
 
 	for _, succ := range remote_succs {
-		// let client know we're done if minAcks is reached
-		if repwrite_count+1 == minAcks && !returned {
-			returned = true
-			item.commited = true
-			//log.Printf("Returning set to user because %d == %d == %d\n", repwrite_count+1, minAcks, write_count)
-			done <- nil
-		}
-		newItem := item.dup()
-		newItem.replicaInfo.state = replicaIncomplete
-		newItem.commited = false
-
-		err := dt.remoteWriteReplica(vn, succ, newItem)
+		err := dt.remoteWriteReplica(vn, succ, repl_item)
 		if err != nil {
-			if !returned {
-				done <- fmt.Errorf("could not write replica due to error %s", err)
-				return
-			}
-			return
+			dt.Logf(LogDebug, "could not write replica due to error: %s\n", err)
+			continue
 		}
 		item_replicas = append(item_replicas, succ)
-		repwrite_count += 1
+	}
+
+	// check if we have enough written replicas for requested minAcks
+	if minAcks > len(item_replicas)+1 {
+		done <- fmt.Errorf("insufficient active nodes found for requested consistency level (%d)\n", minAcks)
+		return
+	}
+
+	// update replication state based on available replicas
+	var target_state replicaState
+	if dt.ring.Replicas() <= len(item_replicas) {
+		target_state = replicaStable
+	} else {
+		target_state = replicaPartial
 	}
 
 	// replicas have been written, lets now update metadata
-	replication_success := true
-	repl_item := item.dup()
+	real_idx := 0
+	fail_count := 0
 	repl_item.commited = true
-	repl_item.replicaInfo = new(kvReplicaInfo)
-	repl_item.replicaInfo.state = replicaStable
 	repl_item.replicaInfo.vnodes = item_replicas
+	repl_item.replicaInfo.state = target_state
 	repl_item.replicaInfo.master = vn
 
-	for idx, replica := range item_replicas {
-		repl_item.replicaInfo.depth = idx
+	for _, replica := range item_replicas {
+		// update metadata/commit on remote
+		repl_item.replicaInfo.depth = real_idx
 		err := dt.remoteSetReplicaInfo(replica, repl_item)
 		if err != nil {
-			replication_success = false
-			break
+			fail_count++
+			if !returned && len(item_replicas)-fail_count < minAcks {
+				done <- fmt.Errorf("insufficient (phase2) active nodes found for requested consistency level (%d)\n", minAcks)
+				return
+			}
+			continue
+		}
+		real_idx++
+		repwrite_count++
+
+		// notify client if enough replicas have been written
+		if !returned && repwrite_count+1 == minAcks {
+			done <- nil
+			returned = true
 		}
 	}
-	if replication_success {
-		item.replicaInfo.vnodes = item_replicas
-		item.commited = true
-	}
-	if !returned {
-		item.commited = true
-		done <- nil
-	}
+	item.replicaInfo.state = target_state
+	item.commited = true
 }
 
 func (dt *DTable) DumpStr() {
@@ -391,11 +404,11 @@ func (dt *DTable) DumpStr() {
 	for vn_id, vn_table := range dt.table {
 		fmt.Printf("\tvnode: %s\n", vn_id)
 		for key, item := range vn_table {
-			fmt.Printf("\t\t%s - %s - %v\n", key, item.Val, item.replicaInfo.state)
+			fmt.Printf("\t\t%s - %s - %v - commited:%v\n", key, item.Val, item.replicaInfo.state, item.commited)
 		}
 		rt, _ := dt.rtable[vn_id]
 		for key, item := range rt {
-			fmt.Printf("\t\t- r%d - %s - %s - %d\n", item.replicaInfo.depth, key, item.Val, item.replicaInfo.state)
+			fmt.Printf("\t\t- r%d - %s - %s - %d - commited:%v\n", item.replicaInfo.depth, key, item.Val, item.replicaInfo.state, item.commited)
 		}
 		for key, item := range dt.demoted_table[vn_id] {
 			fmt.Printf("\t\t- d - %s - %s - %v\n", key, item.new_master.String(), item.demoted_ts)
