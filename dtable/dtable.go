@@ -329,12 +329,14 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 			done <- fmt.Errorf("could not find replica nodes due to error %s", err)
 		}
 		dt.Logf(LogDebug, "could not find replica nodes due to error %s\n", err)
+		dt.rollback(vn, item)
 		return
 	}
 
 	// don't write any replica if not enough replica nodes have been found for requested consistency
 	if minAcks > len(remote_succs)+1 {
 		done <- fmt.Errorf("insufficient nodes found for requested consistency level (%d)\n", minAcks)
+		dt.rollback(vn, item)
 		return
 	}
 
@@ -355,6 +357,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	// check if we have enough written replicas for requested minAcks
 	if minAcks > len(item_replicas)+1 {
 		done <- fmt.Errorf("insufficient active nodes found for requested consistency level (%d)\n", minAcks)
+		dt.rollback(vn, item)
 		return
 	}
 
@@ -382,6 +385,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 			fail_count++
 			if !returned && len(item_replicas)-fail_count < minAcks {
 				done <- fmt.Errorf("insufficient (phase2) active nodes found for requested consistency level (%d)\n", minAcks)
+				dt.rollback(vn, item)
 				return
 			}
 			continue
@@ -397,6 +401,18 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	}
 	item.replicaInfo.state = target_state
 	item.commited = true
+}
+
+// rollback is called on failed set()
+func (dt *DTable) rollback(vn *dendrite.Vnode, item *kvItem) {
+	if item.replicaInfo != nil {
+		for _, replica := range item.replicaInfo.vnodes {
+			if replica != nil {
+				dt.remoteClearReplica(replica, item, false)
+			}
+		}
+	}
+	delete(dt.table[vn.String()], item.keyHashString())
 }
 
 func (dt *DTable) DumpStr() {
