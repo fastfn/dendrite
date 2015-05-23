@@ -239,14 +239,22 @@ func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 	}
 	// check if successor exists in local dtable
 	vn_table, ok := dt.table[succs[0].String()]
+	key_str := reqItem.keyHashString()
 	if ok {
-		key_str := reqItem.keyHashString()
 		if item, exists := vn_table[key_str]; exists && item.commited {
 			return item.dup(), nil
 		} else {
-			return nil, fmt.Errorf("not found")
+			return nil, nil
+		}
+	} else {
+		// check against replica tables
+		for _, rtable := range dt.rtable {
+			if item, exists := rtable[key_str]; exists && item.replicaInfo.state == replicaIncomplete {
+				return item, nil
+			}
 		}
 	}
+
 	// make remote call to all successors
 	var last_err error
 	for _, succ := range succs {

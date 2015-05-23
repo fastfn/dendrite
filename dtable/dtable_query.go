@@ -86,6 +86,7 @@ func (q *Query) Set(key, val []byte) error {
 		go q.dt.set(succs[0], reqItem, q.minAcks, wait)
 	} else {
 		// pass to remote
+		reqItem.replicaInfo.master = succs[0]
 		go q.dt.remoteSet(succs[0], succs[0], reqItem, q.minAcks, false, wait)
 	}
 	err = <-wait
