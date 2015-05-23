@@ -39,6 +39,9 @@ func (q *Query) Consistency(n int) *Query {
 }
 
 func (q *Query) Get(key []byte) (*KVItem, error) {
+	if key == nil || len(key) == 0 {
+		return fmt.Errorf("key can not be nil or empty")
+	}
 	reqItem := new(kvItem)
 	reqItem.Key = key
 	reqItem.keyHash = dendrite.HashKey(key)
@@ -55,6 +58,9 @@ func (q *Query) Get(key []byte) (*KVItem, error) {
 }
 
 func (q *Query) Set(key, val []byte) error {
+	if key == nil || len(key) == 0 {
+		return fmt.Errorf("key can not be nil or empty")
+	}
 	q.qType = qSet
 	reqItem := new(kvItem)
 
