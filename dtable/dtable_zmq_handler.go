@@ -1,11 +1,10 @@
 package dtable
 
 import (
-	//"bytes"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
-	//"log"
+	"sync"
 )
 
 func (dt *DTable) zmq_status_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
@@ -83,6 +82,7 @@ func (dt *DTable) zmq_get_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableSetItem)
 	reqItem := new(kvItem)
+	reqItem.lock = new(sync.Mutex)
 	reqItem.from_protobuf(pbMsg.GetItem())
 	demoting := pbMsg.GetDemoting()
 	minAcks := int(pbMsg.GetMinAcks())
@@ -105,14 +105,17 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 	if demoting {
 		old_master := reqItem.replicaInfo.master
 		reqItem.replicaInfo.master = dest
+		reqItem.lock.Lock()
 		err := dt.table[dest_key_str].put(reqItem)
 		if err != nil {
 			errorMsg := zmq_transport.NewErrorMsg("ZMQ::DTable::SetHandler - demote received error on - " + err.Error())
 			w <- errorMsg
+			reqItem.lock.Unlock()
 			return
 		}
 		go dt.processDemoteKey(dest, origin, old_master, reqItem)
 		setResp.Ok = proto.Bool(true)
+		reqItem.lock.Unlock()
 	} else {
 		wait := make(chan error)
 		go dt.set(dest, reqItem, minAcks, wait)

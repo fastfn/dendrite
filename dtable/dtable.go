@@ -298,8 +298,8 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	write_count := 0
 	vn_table, _ := dt.table[vn.String()]
 
-	//item.lock.Lock()
-	//defer item.lock.Unlock()
+	item.lock.Lock()
+	defer item.lock.Unlock()
 
 	item.replicaInfo.master = vn
 	err := vn_table.put(item)
@@ -308,9 +308,6 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 		return
 	}
 
-	if dt.ring.Replicas() <= write_count+1 {
-
-	}
 	write_count++
 	repwrite_count := 0
 	returned := false
@@ -440,9 +437,9 @@ func (dt *DTable) DumpStr() {
 	}
 }
 
-// processDemoteKey() is called when our successor is demoting key to us
-// we fix replicas for the key and when we're done
-// we make a call to origin (old primary for this key) to clear demotedItem there
+// processDemoteKey is called when our successor is demoting key to us.
+// We fix replicas for the key and when we're done we make a call to origin
+// (old primary for this key) to clear demotedItem there.
 func (dt *DTable) processDemoteKey(vnode, origin, old_master *dendrite.Vnode, reqItem *kvItem) {
 	// find the key in our primary table
 	key_str := reqItem.keyHashString()

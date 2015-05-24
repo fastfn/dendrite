@@ -15,8 +15,10 @@ func (dt *DTable) promoteKey(vnode *dendrite.Vnode, reqItem *kvItem) {
 		return
 	}
 	delete(rtable, reqItem.keyHashString())
+	reqItem.lock.Lock()
 	vn_table.put(reqItem)
 	dt.replicateKey(vnode, reqItem, dt.ring.Replicas())
+	reqItem.lock.Unlock()
 }
 
 // promote() - called when remote predecessor died or left the ring
@@ -43,11 +45,13 @@ func (dt *DTable) promote(vnode *dendrite.Vnode) {
 			new_ritem := ritem.dup()
 			new_ritem.replicaInfo.vnodes[0] = nil
 			new_ritem.commited = true
-			vn_table[key_str] = new_ritem
+			new_ritem.lock.Lock()
+			vn_table.put(new_ritem)
 			dt.Logf(LogDebug, "Promoted local key: %s - running replicator now replicas are %+v \n", key_str, new_ritem.replicaInfo.vnodes)
 			delete(rtable, key_str)
 			dt.Logf(LogDebug, "Promote calling replicateKey for key %s\n", key_str)
 			dt.replicateKey(vnode, new_ritem, dt.ring.Replicas())
+			new_ritem.lock.Unlock()
 			dt.Logf(LogDebug, "Promote finishing key %s, replicaVnodes are: %+v\n", key_str, new_ritem.replicaInfo.vnodes)
 		} else {
 			// TODO promote remote vnode
@@ -91,8 +95,10 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 			if !ritem.commited {
 				continue
 			}
+
 			ritem.replicaInfo.vnodes[ritem.replicaInfo.depth] = new_pred
-			dt.rtable[new_pred.String()][rkey] = ritem
+			ritem.lock.Lock()
+			dt.rtable[new_pred.String()].put(ritem)
 			delete(vn_rtable, rkey)
 
 			// update metadata on all replicas
@@ -113,6 +119,7 @@ func (dt *DTable) demote(vnode, new_pred *dendrite.Vnode) {
 					continue
 				}
 			}
+			ritem.lock.Unlock()
 		}
 	case false:
 		// loop over primary table to find keys that should belong to new predecessor
@@ -146,7 +153,9 @@ func (dt *DTable) changeReplicas(vnode *dendrite.Vnode, new_replicas []*dendrite
 		if !item.commited {
 			continue
 		}
+		item.lock.Lock()
 		dt.replicateKey(vnode, item, dt.ring.Replicas())
+		item.lock.Unlock()
 	}
 }
 

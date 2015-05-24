@@ -3,6 +3,7 @@ package dtable
 import (
 	"fmt"
 	"github.com/fastfn/dendrite"
+	"sync"
 	"time"
 )
 
@@ -40,7 +41,7 @@ func (q *Query) Consistency(n int) *Query {
 
 func (q *Query) Get(key []byte) (*KVItem, error) {
 	if key == nil || len(key) == 0 {
-		return fmt.Errorf("key can not be nil or empty")
+		return nil, fmt.Errorf("key can not be nil or empty")
 	}
 	reqItem := new(kvItem)
 	reqItem.Key = key
@@ -63,6 +64,7 @@ func (q *Query) Set(key, val []byte) error {
 	}
 	q.qType = qSet
 	reqItem := new(kvItem)
+	reqItem.lock = new(sync.Mutex)
 
 	reqItem.Key = make([]byte, len(key))
 	copy(reqItem.Key, key)
