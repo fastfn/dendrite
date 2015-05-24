@@ -11,16 +11,18 @@ import (
 	"time"
 )
 
-// Any vnode (local or remote)
+// Vnode is basic virtual node structure.
 type Vnode struct {
 	Id   []byte
 	Host string // ip:port
 }
 
+// String returns string representation (hex encoded) of vnode's Id.
 func (vn *Vnode) String() string {
 	return fmt.Sprintf("%x", vn.Id)
 }
 
+// ToProtobuf is a helper method which returns PBProtoVnode message from a *Vnode.
 func (vn *Vnode) ToProtobuf() *PBProtoVnode {
 	return &PBProtoVnode{
 		Host: proto.String(vn.Host),
@@ -28,6 +30,7 @@ func (vn *Vnode) ToProtobuf() *PBProtoVnode {
 	}
 }
 
+// VnodeFromProtobuf is helper method that creates *Vnode from PBProtoVnode message.
 func VnodeFromProtobuf(pb *PBProtoVnode) *Vnode {
 	return &Vnode{
 		Id:   pb.GetId(),
@@ -35,7 +38,7 @@ func VnodeFromProtobuf(pb *PBProtoVnode) *Vnode {
 	}
 }
 
-// local Vnode
+// localVnode inherits Vnode and adds additional fields.
 type localVnode struct {
 	Vnode
 	ring              *Ring
@@ -50,6 +53,7 @@ type localVnode struct {
 	delegateMux       sync.Mutex
 }
 
+// init initializes a localVnode.
 func (vn *localVnode) init(idx int) {
 	// combine hostname with idx to generate hash
 	hash := sha1.New()
@@ -63,12 +67,13 @@ func (vn *localVnode) init(idx int) {
 	vn.ring.transport.Register(&vn.Vnode, vn)
 }
 
-// Schedules the Vnode to do regular maintenence
+// schedule schedules vnode's stabilize().
 func (vn *localVnode) schedule() {
 	// Setup our stabilize timer
 	vn.timer = time.AfterFunc(randStabilize(vn.ring.config), vn.stabilize)
 }
 
+// stabilize is part of Chord Protocol. It is used to position a vnode inside of the ring and handle changes.
 func (vn *localVnode) stabilize() {
 	defer vn.schedule()
 
@@ -94,7 +99,7 @@ func (vn *localVnode) stabilize() {
 	//log.Println("[stabilize] completed in", time.Since(start))
 }
 
-// Find closest preceeding finger node
+// closest_preceeding_finger finds closest preceeding Vnode for given id, by using finger table and local successor list.
 func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 	var finger_node, successor_node *Vnode
 
@@ -142,7 +147,7 @@ func (vn *localVnode) closest_preceeding_finger(id []byte) *Vnode {
 	return nil
 }
 
-// Check if there's new successor ahead
+// checkNewSuccessor checks if there's new successor ahead.
 func (vn *localVnode) checkNewSuccessor() error {
 	update_remotes := false
 	for {
@@ -185,6 +190,7 @@ func (vn *localVnode) checkNewSuccessor() error {
 	return nil
 }
 
+// fixLiveSuccessors pings all locally known successors and returns new list of active ones.
 func (vn *localVnode) fixLiveSuccessors() {
 	live_successors := make([]*Vnode, vn.ring.config.NumSuccessors)
 	real_idx := 0
@@ -200,7 +206,7 @@ func (vn *localVnode) fixLiveSuccessors() {
 	vn.successors = live_successors
 }
 
-// Notifies our successor of us, updates successor list
+// notifySuccessor notifies our successor of us, and updates successor list.
 func (vn *localVnode) notifySuccessor() error {
 	old_successors := make([]*Vnode, len(vn.successors))
 	copy(old_successors, vn.successors)
@@ -251,7 +257,7 @@ func (vn *localVnode) notifySuccessor() error {
 	return nil
 }
 
-// Checks the health of our predecessor
+// checkPredecessor checks the health of vnode's predecessor.
 func (vn *localVnode) checkPredecessor() error {
 	// Check predecessor
 	if vn.predecessor != nil {
@@ -266,6 +272,7 @@ func (vn *localVnode) checkPredecessor() error {
 	return nil
 }
 
+// fixFingerTable updates finger table.
 func (vn *localVnode) fixFingerTable() error {
 	//log.Printf("Starting fixFingerTable, %X - %X\n", vn.Id, vn.successors[0].Id)
 	idx := 0
@@ -299,7 +306,7 @@ func (vn *localVnode) fixFingerTable() error {
 	return nil
 }
 
-// updateRemoteSuccessors()
+// updateRemoteSuccessors finds immediate but remote successors. It is used to form replica nodes.
 func (vn *localVnode) updateRemoteSuccessors() {
 	old_remotes := make([]*Vnode, vn.ring.Replicas())
 	copy(old_remotes, vn.remote_successors)
@@ -337,9 +344,10 @@ func (vn *localVnode) updateRemoteSuccessors() {
 	}
 }
 
-// findRemoteSuccessors returns up to 'limit' successor vnodes,
-// that are uniq and do not reside on same physical node as vnode
-// it is asumed this method is called from origin vnode
+/*
+	findRemoteSuccessors returns up to 'limit' successor vnodes that are unique and
+	do not reside on same physical node as calling vnode.
+*/
 func (vn *localVnode) findRemoteSuccessors(limit int) ([]*Vnode, error) {
 	remote_succs := make([]*Vnode, limit)
 	seen_vnodes := make(map[string]bool)

@@ -2,12 +2,12 @@ package dendrite
 
 import (
 	"bytes"
-	//"fmt"
-	//"log"
 )
 
-// handles vnode operations
-// transports use this interface to avoid duplicate implementations
+/*
+ VnodeHandler interface defines methods (from Transport interface) that are to be called in vnode context.
+ Transports use this interface to avoid duplicate implementations. localVnode implements this interface.
+*/
 type VnodeHandler interface {
 	FindSuccessors([]byte, int) ([]*Vnode, *Vnode, error) // args: key, limit # returns: succs, forward, error
 	FindRemoteSuccessors(int) ([]*Vnode, error)
@@ -15,13 +15,13 @@ type VnodeHandler interface {
 	Notify(*Vnode) ([]*Vnode, error)
 }
 
-// localVnode implements vnodeHandler interface
-// vn here is just for convenience because we're often passing *Vnode
+// localHandler is a handler object connecting a VnodeHandler and Vnode.
 type localHandler struct {
 	vn      *Vnode
 	handler VnodeHandler
 }
 
+// FindSuccessors implements Transport's FindSuccessors() in vnode context.
 func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, error) {
 	// check if we have direct successor for requested key
 	succs := make([]*Vnode, 0)
@@ -62,6 +62,7 @@ func (vn *localVnode) FindSuccessors(key []byte, limit int) ([]*Vnode, *Vnode, e
 	return nil, forward_vn, nil
 }
 
+// GetPredecessor implements Transport's GetPredecessor() in vnode context.
 func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 	if vn.predecessor == nil {
 		return nil, nil
@@ -69,7 +70,7 @@ func (vn *localVnode) GetPredecessor() (*Vnode, error) {
 	return vn.predecessor, nil
 }
 
-// Notify is invoked when a Vnode gets notified
+// Notify is invoked when a Vnode gets notified.
 func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 	// Check if we should update our predecessor
 	if vn.predecessor == nil || between(vn.predecessor.Id, vn.Id, maybe_pred.Id, false) {
@@ -117,8 +118,7 @@ func (vn *localVnode) Notify(maybe_pred *Vnode) ([]*Vnode, error) {
 }
 
 // FindRemoteSuccessors returns up to 'limit' successor vnodes,
-// that are uniq and do not reside on same physical node as vnode
-// it is asumed this method is called from origin vnode
+// that are unique and do not reside on same physical node as vnode.
 func (vn *localVnode) FindRemoteSuccessors(limit int) ([]*Vnode, error) {
 	remote_succs := make([]*Vnode, 0)
 	for _, succ := range vn.remote_successors {

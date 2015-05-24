@@ -20,7 +20,7 @@ const (
 	workerCtlShutdown
 )
 
-// ZeroMQ Transport implementation
+// ZMQTransport implements Transport interface using ZeroMQ for communication.
 type ZMQTransport struct {
 	lock              *sync.Mutex
 	minHandlers       int
@@ -40,14 +40,19 @@ type ZMQTransport struct {
 	hooks             []TransportHook
 }
 
+// RegisterHook registers TransportHook within ZMQTransport.
 func (t *ZMQTransport) RegisterHook(h TransportHook) {
 	t.hooks = append(t.hooks, h)
 }
 
-// Creates ZeroMQ transport
-// Multiplexes incoming connections which are then processed in separate go routines (workers)
-// Multiplexer spawns go routines as needed, but 10 worker routines are created on start
-// Every request times out after provided timeout duration
+/*
+	InitZMQTransport creates ZeroMQ transport.
+
+	It multiplexes incoming connections which are then processed in separate go routines (workers).
+	Multiplexer spawns go routines as needed, but 10 worker routines are created on startup.
+	Every request times out after provided timeout duration. ZMQ pattern is:
+		zmq.ROUTER(incoming) -> proxy -> zmq.DEALER -> [zmq.REP(worker), zmq.REP...]
+*/
 func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error) {
 	// initialize ZMQ Context
 	context, err := zmq.NewContext()
@@ -65,7 +70,7 @@ func InitZMQTransport(hostname string, timeout time.Duration) (Transport, error)
 		return nil, err
 	}
 
-	// setup dealer for
+	// setup dealer
 	dealer_sock, err := context.NewSocket(zmq.DEALER)
 	if err != nil {
 		return nil, err
