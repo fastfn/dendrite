@@ -255,11 +255,12 @@ func (dt *DTable) selfCheck() {
 			}
 			item.lock.Lock()
 			new_orphans := make([]*dendrite.Vnode, 0)
+			replicate_again := false
 			for _, orphan_vnode := range item.replicaInfo.orphan_vnodes {
 				if orphan_vnode == nil {
 					continue
 				}
-				// maybe it was fixed already by another process
+				// maybe it was fixed already by another process (eg, replicas changed and key was re-replicated)
 				fixed := false
 				for _, replica := range item.replicaInfo.vnodes {
 					if replica == nil {
@@ -273,13 +274,20 @@ func (dt *DTable) selfCheck() {
 					if err := dt.remoteClearReplica(orphan_vnode, item, false); err != nil {
 						// attempt to clear orphan'ed item failed
 						new_orphans = append(new_orphans, orphan_vnode)
+					} else {
+						// success, lets re-replicate this key
+						replicate_again = true
 					}
 				}
 			}
 			item.replicaInfo.orphan_vnodes = new_orphans
+			if replicate_again {
+				dt.replicateKey(item.replicaInfo.master, item, dt.ring.Replicas())
+			}
 			item.lock.Unlock()
 		}
 	}
+
 	//check for demoted keys
 	for _, demoted_table := range dt.demoted_table {
 		for _, demoted_item := range demoted_table {
