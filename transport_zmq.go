@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	// protocol buffer messages (for definitions, see pb_defs/chord.go)
+	// protocol buffer messages (for definitions, see pb_defs/chord.proto)
 	PbPing MsgType = iota
 	PbAck
 	PbErr
@@ -24,6 +24,7 @@ const (
 	PbNotify
 )
 
+// newErrorMsg is a helper to create encoded *ChordMsg (PBProtoErr) with error in it.
 func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
 	pbmsg := &PBProtoErr{
 		Error: proto.String(msg),
@@ -35,6 +36,8 @@ func (transport *ZMQTransport) newErrorMsg(msg string) *ChordMsg {
 	}
 
 }
+
+// NewErrorMsg is a helper to create encoded *ChordMsg (PBProtoErr) with error in it.
 func (transport *ZMQTransport) NewErrorMsg(msg string) *ChordMsg {
 	pbmsg := &PBProtoErr{
 		Error: proto.String(msg),
@@ -46,6 +49,8 @@ func (transport *ZMQTransport) NewErrorMsg(msg string) *ChordMsg {
 	}
 
 }
+
+// Encode implement's Transport's Encode() in ZMQTransport.
 func (transport *ZMQTransport) Encode(mt MsgType, data []byte) []byte {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(byte(mt))
@@ -53,6 +58,10 @@ func (transport *ZMQTransport) Encode(mt MsgType, data []byte) []byte {
 	return buf.Bytes()
 }
 
+// Decode implements Transport's Decode() in ZMQTransport. For request messages
+// it also sets their respective handler to be called when such request comes in.
+// If message type is unknown to this transport, Decode() also checks for registered
+// TransportHooks and runs their Decode() implementation.
 func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 	data_len := len(data)
 	if data_len == 0 {
@@ -165,6 +174,7 @@ func (transport *ZMQTransport) Decode(data []byte) (*ChordMsg, error) {
 	return cm, nil
 }
 
+// getVnodeHandler returns registered local vnode handler, if one is found for given vnode.
 func (transport *ZMQTransport) getVnodeHandler(dest *Vnode) (VnodeHandler, error) {
 	h, ok := transport.table[dest.String()]
 	if ok {
@@ -173,6 +183,7 @@ func (transport *ZMQTransport) getVnodeHandler(dest *Vnode) (VnodeHandler, error
 	return nil, fmt.Errorf("local vnode handler not found")
 }
 
+// GetVnodeHandler returns registered local vnode handler, if one is found for given vnode.
 func (transport *ZMQTransport) GetVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
 	handler, err := transport.getVnodeHandler(vnode)
 	if err != nil {
@@ -181,13 +192,14 @@ func (transport *ZMQTransport) GetVnodeHandler(vnode *Vnode) (VnodeHandler, bool
 	return handler, true
 }
 
+// Register registers a VnodeHandler within ZMQTransport.
 func (transport *ZMQTransport) Register(vnode *Vnode, handler VnodeHandler) {
 	transport.lock.Lock()
 	transport.table[vnode.String()] = &localHandler{vn: vnode, handler: handler}
 	transport.lock.Unlock()
 }
 
-// Client Request: list of vnodes from remote host
+// ListVnodes - client request. Implements Transport's ListVnodes() in ZQMTransport.
 func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
@@ -259,7 +271,7 @@ func (transport *ZMQTransport) ListVnodes(host string) ([]*Vnode, error) {
 
 }
 
-// Client Request: find successors for vnode key, by asking remote vnode
+// FindSuccessors - client request. Implements Transport's FindSuccessors() in ZQMTransport.
 func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []byte) ([]*Vnode, error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
@@ -342,7 +354,7 @@ func (transport *ZMQTransport) FindSuccessors(remote *Vnode, limit int, key []by
 	}
 }
 
-// Client Request: get vnode's predcessor
+// GetPredecessor - client request. Implements Transport's GetPredecessor() in ZQMTransport.
 func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan *Vnode, 1)
@@ -412,7 +424,7 @@ func (transport *ZMQTransport) GetPredecessor(remote *Vnode) (*Vnode, error) {
 	}
 }
 
-// Client Request: notify successor of our existence and get the list of its successors
+// Notify - client request. Implements Transport's Notify() in ZQMTransport.
 func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 	error_c := make(chan error, 1)
 	resp_c := make(chan []*Vnode, 1)
@@ -473,14 +485,14 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 			return
 		default:
 			// unexpected response
-			error_c <- fmt.Errorf("ZMQ::GetPredecessor - unexpected response")
+			error_c <- fmt.Errorf("ZMQ::Notify - unexpected response")
 			return
 		}
 	}()
 
 	select {
 	case <-time.After(transport.clientTimeout):
-		return nil, fmt.Errorf("ZMQ::GetPredecessor - command timed out!")
+		return nil, fmt.Errorf("ZMQ::Notify - command timed out!")
 	case err := <-error_c:
 		return nil, err
 	case resp_vnode := <-resp_c:
@@ -488,6 +500,7 @@ func (transport *ZMQTransport) Notify(remote, self *Vnode) ([]*Vnode, error) {
 	}
 }
 
+// Ping - client request. Implements Transport's Ping() in ZQMTransport.
 func (transport *ZMQTransport) Ping(remote_vn *Vnode) (bool, error) {
 	req_sock, err := transport.zmq_context.NewSocket(zmq.REQ)
 	if err != nil {

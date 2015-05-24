@@ -59,8 +59,8 @@ type Transport interface {
 	// Register registers local vnode handlers
 	Register(*Vnode, VnodeHandler)
 
-	// Encode encodes dendrite msg into two frame byte stream. First byte is message type,
-	// and the rest is protobuf data.
+	// Encode encodes dendrite msg into two frame byte stream. First frame is a single byte representing
+	// message type, and another frame is protobuf data.
 	Encode(MsgType, []byte) []byte
 
 	// RegisterHook registers a TransportHook within the transport.
