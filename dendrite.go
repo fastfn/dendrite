@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
+// MsgType represents message type for ChordMsg encoding.
 type MsgType byte
+
+// ChordMsg is lowest entity to be transmited through dendrite.
 type ChordMsg struct {
 	Type             MsgType
 	Data             []byte
@@ -22,57 +25,51 @@ func (e ErrHookUnknownType) Error() string {
 	return fmt.Sprintf("%s", string(e))
 }
 
-// TransportHook is used to extend base capabilities of a transport in decoding and processing messages
-// 3rd party packages can register their hooks and leverage existing transport architecture and capabilities
-// ZMQTransport allows this extension
+// TransportHook provides interface to build additional message types, decoders and handlers through 3rd party
+// packages that can register their hooks and leverage existing transport architecture and capabilities.
 type TransportHook interface {
-	// decodes bytes to ChordMsg
-	Decode([]byte) (*ChordMsg, error)
+	Decode([]byte) (*ChordMsg, error) // decodes bytes to ChordMsg
 }
 
-// DelegateHook is used to extend capabilities on events when ring structure changes
-// specifically, when new predecessor is set.
-// first Vnode param is local Vnode that handles delegation
-// second Vnode param is a Vnode representing new predecessor
+// DelegateHook provides interface to capture dendrite events in 3rd party packages.
 type DelegateHook interface {
 	EmitEvent(*EventCtx)
 }
 
+// Transport interface defines methods for communication between vnodes.
 type Transport interface {
-	// Gets a list of the vnodes on the box
+	// ListVnodes returns list of local vnodes from remote host.
 	ListVnodes(string) ([]*Vnode, error)
 
-	// Ping a Vnode, check for liveness
+	// Ping sends ping message to a vnode.
 	Ping(*Vnode) (bool, error)
 
-	// Request a vnode's predecessor
+	// GetPredecessor is a request to get vnode's predecessor.
 	GetPredecessor(*Vnode) (*Vnode, error)
 
-	// Notify our successor of ourselves
+	// Notify our successor of ourselves.
 	Notify(dest, self *Vnode) ([]*Vnode, error)
 
-	// Find successors for vnode key
+	// FindSuccessors sends request to a vnode, requesting the list of successors for given key.
 	FindSuccessors(*Vnode, int, []byte) ([]*Vnode, error)
 
-	// Find vnodeHandler if it exists locally
+	// GetVnodeHandler returns VnodeHandler interface if requested vnode is local
 	GetVnodeHandler(*Vnode) (VnodeHandler, bool)
 
-	// Clears a predecessor if it matches a given vnode. Used to leave.
-	//ClearPredecessor(target, self *Vnode) error
-
-	// Instructs a node to skip a given successor. Used to leave.
-	//SkipSuccessor(target, self *Vnode) error
-
-	// Register vnode handlers
+	// Register registers local vnode handlers
 	Register(*Vnode, VnodeHandler)
 
-	// encode encodes dendrite msg into two frame byte stream
-	// first byte is message type, and the rest is protobuf data
+	// Encode encodes dendrite msg into two frame byte stream. First byte is message type,
+	// and the rest is protobuf data.
 	Encode(MsgType, []byte) []byte
+
+	// RegisterHook registers a TransportHook within the transport.
 	RegisterHook(TransportHook)
+
 	TransportHook
 }
 
+// Config is a main ring configuration struct.
 type Config struct {
 	Hostname      string
 	NumVnodes     int // num of vnodes to create
@@ -80,9 +77,10 @@ type Config struct {
 	StabilizeMax  time.Duration
 	NumSuccessors int      // number of successor to keep in self log
 	Replicas      int      // number of replicas to keep by default
-	LogLevel      LogLevel // logLevel, 0 = info, 1 = debug
+	LogLevel      LogLevel // logLevel, 0 = null, 1 = info, 2 = debug
 }
 
+// DefaultConfig returns *Config with default values.
 func DefaultConfig(hostname string) *Config {
 	return &Config{
 		Hostname: hostname,
@@ -106,6 +104,7 @@ const (
 	LogDebug LogLevel = 2
 )
 
+// Logf wraps log.Printf
 func (r *Ring) Logf(level LogLevel, format string, v ...interface{}) {
 	var new_format string
 	if level == LogInfo {
@@ -121,6 +120,7 @@ func (r *Ring) Logf(level LogLevel, format string, v ...interface{}) {
 	}
 }
 
+// Logln wraps log.Println
 func (r *Ring) Logln(level LogLevel, v ...interface{}) {
 	var new_format string
 	if level == LogInfo {
@@ -137,37 +137,42 @@ func (r *Ring) Logln(level LogLevel, v ...interface{}) {
 	}
 }
 
+// Ring is the main chord ring object.
 type Ring struct {
 	config         *Config
 	transport      Transport
-	vnodes         []*localVnode
+	vnodes         []*localVnode // list of local vnodes
 	shutdown       chan bool
 	Stabilizations int
 	delegateHooks  []DelegateHook
 }
 
-// implement sort.Interface (Len(), Less() and Swap())
+// Less implements sort.Interface Less() - used to sort ring.vnodes.
 func (r *Ring) Less(i, j int) bool {
 	return bytes.Compare(r.vnodes[i].Id, r.vnodes[j].Id) == -1
 }
 
+// Swap implements sort.Interface Swap() - used to sort ring.vnodes.
 func (r *Ring) Swap(i, j int) {
 	r.vnodes[i], r.vnodes[j] = r.vnodes[j], r.vnodes[i]
 }
 
+// Len implements sort.Interface Len() - used to sort ring.vnodes.
 func (r *Ring) Len() int {
 	return len(r.vnodes)
 }
 
+// Replicas returns ring.config.Replicas.
 func (r *Ring) Replicas() int {
 	return r.config.Replicas
 }
 
+// MaxStabilize returns ring.config.StabilizeMax duration.
 func (r *Ring) MaxStabilize() time.Duration {
 	return r.config.StabilizeMax
 }
 
-// Does a key lookup for up to N successors of a key
+// Lookup. For given key hash, it finds N successors in the ring.
 func (r *Ring) Lookup(n int, keyHash []byte) ([]*Vnode, error) {
 	// Ensure that n is sane
 	if n > r.config.NumSuccessors {
@@ -190,8 +195,8 @@ func (r *Ring) Lookup(n int, keyHash []byte) ([]*Vnode, error) {
 	return successors, nil
 }
 
-// Initializes the vnodes with their local successors
-// Vnodes need to be sorted before this method is called
+// setLocalSuccessors initializes the vnodes with their local successors.
+// Vnodes need to be sorted before this method is called.
 func (r *Ring) setLocalSuccessors() {
 	numV := len(r.vnodes)
 	if numV == 1 {
@@ -210,6 +215,7 @@ func (r *Ring) setLocalSuccessors() {
 
 }
 
+// init initializes the ring.
 func (r *Ring) init(config *Config, transport Transport) {
 	r.config = config
 	r.transport = InitLocalTransport(transport)
@@ -250,12 +256,14 @@ func (r *Ring) init(config *Config, transport Transport) {
 	*/
 }
 
+// schedule schedules ring's vnodes stabilize() for execution.
 func (r *Ring) schedule() {
 	for i := 0; i < len(r.vnodes); i++ {
 		r.vnodes[i].schedule()
 	}
 }
 
+// MyVnodes returns slice of local Vnodes
 func (r *Ring) MyVnodes() []*Vnode {
 	rv := make([]*Vnode, len(r.vnodes))
 	for idx, local_vn := range r.vnodes {
@@ -264,6 +272,7 @@ func (r *Ring) MyVnodes() []*Vnode {
 	return rv
 }
 
+// CreateRing bootstraps the ring with given config and local transport.
 func CreateRing(config *Config, transport Transport) (*Ring, error) {
 	// initialize the ring and sort vnodes
 	r := &Ring{}
@@ -278,6 +287,7 @@ func CreateRing(config *Config, transport Transport) (*Ring, error) {
 	return r, nil
 }
 
+// JoinRing joins existing dendrite network.
 func JoinRing(config *Config, transport Transport, existing string) (*Ring, error) {
 	hosts, err := transport.ListVnodes(existing)
 	if err != nil {
@@ -338,6 +348,7 @@ func JoinRing(config *Config, transport Transport, existing string) (*Ring, erro
 	return r, nil
 }
 
+// RegisterDelegateHook registers DelegateHook for emitting ring events.
 func (r *Ring) RegisterDelegateHook(dh DelegateHook) {
 	r.delegateHooks = append(r.delegateHooks, dh)
 }
@@ -350,6 +361,7 @@ var (
 	EvReplicasChanged   RingEventType = 3
 )
 
+// EventCtx is a generic struct representing an event. Instance of EventCtx is emitted to DelegateHooks.
 type EventCtx struct {
 	EvType        RingEventType
 	Target        *Vnode
@@ -359,6 +371,7 @@ type EventCtx struct {
 	ResponseCh    chan interface{}
 }
 
+// emit emits EventCtx to all registered DelegateHooks.
 func (r *Ring) emit(ctx *EventCtx) {
 	for _, dh := range r.delegateHooks {
 		go dh.EmitEvent(ctx)

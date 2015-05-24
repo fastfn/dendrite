@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-// Local Transport is used when reaching out to local vnodes
+// LocalTransport implements Transport interface, but is used for communicating between local vnodes.
 type LocalTransport struct {
 	host   string
 	remote Transport
@@ -12,6 +12,7 @@ type LocalTransport struct {
 	table  map[string]*localHandler
 }
 
+// InitLocalTransport initializes LocalTransport.
 func InitLocalTransport(remote Transport) Transport {
 	lt := &LocalTransport{
 		remote: remote,
@@ -20,18 +21,21 @@ func InitLocalTransport(remote Transport) Transport {
 	return lt
 }
 
-// Just satisfying interface
+// RegisterHook does nothing in local transport. Just satisfying interface.
 func (lt *LocalTransport) RegisterHook(th TransportHook) {
 }
 
-// no need to Decode or Encode in local transport, just satisfying interface
+// Decode does nothing in local transport. Just satisfying interface.
 func (lt *LocalTransport) Decode(raw []byte) (*ChordMsg, error) {
 	return nil, nil
 }
+
+// Encode does nothing in local transport. Just satisfying interface.
 func (lt *LocalTransport) Encode(msgtype MsgType, data []byte) []byte {
 	return nil
 }
 
+// Register registers a VnodeHandler within local and remote transports.
 func (lt *LocalTransport) Register(vnode *Vnode, handler VnodeHandler) {
 	// Register local instance
 	lt.lock.Lock()
@@ -53,10 +57,12 @@ func (lt *LocalTransport) getVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
 	return nil, ok
 }
 
+// GetVnodeHandler returns registered local vnode handler, if one is found for given vnode.
 func (lt *LocalTransport) GetVnodeHandler(vnode *Vnode) (VnodeHandler, bool) {
 	return lt.getVnodeHandler(vnode)
 }
 
+// FindSuccessors implements Transport's FindSuccessors() in local transport.
 func (lt *LocalTransport) FindSuccessors(vn *Vnode, limit int, key []byte) ([]*Vnode, error) {
 	// Look for it locally
 	handler, ok := lt.getVnodeHandler(vn)
@@ -76,6 +82,7 @@ func (lt *LocalTransport) FindSuccessors(vn *Vnode, limit int, key []byte) ([]*V
 	return lt.remote.FindSuccessors(vn, limit, key)
 }
 
+// ListVnodes implements Transport's ListVnodes() in local transport.
 func (lt *LocalTransport) ListVnodes(host string) ([]*Vnode, error) {
 	// Check if this is a local host
 	if host == lt.host {
@@ -96,6 +103,7 @@ func (lt *LocalTransport) ListVnodes(host string) ([]*Vnode, error) {
 	return lt.remote.ListVnodes(host)
 }
 
+// Ping implements Transport's Ping() in local transport.
 func (lt *LocalTransport) Ping(vn *Vnode) (bool, error) {
 	// Look for it locally
 	_, ok := lt.getVnodeHandler(vn)
@@ -106,6 +114,7 @@ func (lt *LocalTransport) Ping(vn *Vnode) (bool, error) {
 	return lt.remote.Ping(vn)
 }
 
+// GetPredecessor implements Transport's GetPredecessor() in local transport.
 func (lt *LocalTransport) GetPredecessor(vn *Vnode) (*Vnode, error) {
 	local_vn, ok := lt.getVnodeHandler(vn)
 	if ok {
@@ -114,6 +123,7 @@ func (lt *LocalTransport) GetPredecessor(vn *Vnode) (*Vnode, error) {
 	return lt.remote.GetPredecessor(vn)
 }
 
+// Notify implements Transport's Notify() in local transport.
 func (lt *LocalTransport) Notify(dest, self *Vnode) ([]*Vnode, error) {
 	// Look for it locally
 	handler, ok := lt.getVnodeHandler(dest)

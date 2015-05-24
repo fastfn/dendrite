@@ -17,11 +17,13 @@ func min(a, b int) int {
 		return b
 	}
 }
+
+// Min returnes lesser of two ints.
 func Min(a, b int) int {
 	return min(a, b)
 }
 
-// Generates a random stabilization time
+// randStabilize generates a random stabilization time between conf.StabilizeMin and conf.StabilizeMax.
 func randStabilize(conf *Config) time.Duration {
 	min := conf.StabilizeMin
 	max := conf.StabilizeMax
@@ -30,8 +32,6 @@ func randStabilize(conf *Config) time.Duration {
 	return time.Duration((r * float64(max-min)) + float64(min))
 }
 
-// Checks if a key is between two keys (id1 > key > id2)
-// rincl if true, adds variation (id1 > key >= id2)
 func between(id1, id2, key []byte, rincl bool) bool {
 	// Check for ring wrap around
 	if bytes.Compare(id1, id2) == 1 {
@@ -52,11 +52,19 @@ func between(id1, id2, key []byte, rincl bool) bool {
 		bytes.Compare(id2, key) == 1
 }
 
+/*
+	Between checks if key is between id1 and id2, such that:
+
+	if rincl (right-included flag) is true:
+		(id1 > key >  id2)
+	if rincl (right-included flag) is false:
+		(id1 > key >= id2)
+*/
 func Between(id1, id2, key []byte, rincl bool) bool {
 	return between(id1, id2, key, rincl)
 }
 
-// Returns the vnode nearest to a key
+// nearestVnodeToKey for a given list of sorted vnodes, return the closest(predecessor) one to the given key
 func nearestVnodeToKey(vnodes []*localVnode, key []byte) *Vnode {
 	for i := len(vnodes) - 1; i >= 0; i-- {
 		if bytes.Compare(vnodes[i].Id, key) == -1 {
@@ -67,7 +75,7 @@ func nearestVnodeToKey(vnodes []*localVnode, key []byte) *Vnode {
 	return &vnodes[len(vnodes)-1].Vnode
 }
 
-// Computes the offset by (n + 2^exp) % (2^mod)
+// powerOffset computes the offset by (n + 2^exp) % (2^mod)
 func powerOffset(id []byte, exp int, mod int) []byte {
 	// Copy the existing slice
 	off := make([]byte, len(id))
@@ -97,6 +105,7 @@ func powerOffset(id []byte, exp int, mod int) []byte {
 	return idInt.Bytes()
 }
 
+// distance calculates the distance between two keys.
 func distance(a, b []byte) *big.Int {
 	// Get the ring size
 	var ring big.Int
@@ -121,12 +130,14 @@ func distance(a, b []byte) *big.Int {
 
 }
 
+// HashKey generates SHA1 hash for a given []byte key
 func HashKey(key []byte) []byte {
 	hash := sha1.New()
 	hash.Write(key)
 	return hash.Sum(nil)
 }
 
+// KeyFromString decodes hex string to []byte
 func KeyFromString(key_str string) []byte {
 	key, _ := hex.DecodeString(key_str)
 	return key
