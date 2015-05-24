@@ -18,7 +18,7 @@ func min(a, b int) int {
 	}
 }
 
-// Min returnes lesser of two ints.
+// Min returns lesser of two ints.
 func Min(a, b int) int {
 	return min(a, b)
 }
