@@ -3,6 +3,7 @@ package dtable
 import (
 	"bytes"
 	"github.com/fastfn/dendrite"
+	"time"
 )
 
 // promoteKey() -- called when remote wants to promote a key to us
@@ -240,6 +241,67 @@ func (dt *DTable) replicateKey(vnode *dendrite.Vnode, reqItem *kvItem, limit int
 			reqItem.replicaInfo.vnodes[idx] = nil
 			reqItem.replicaInfo.orphan_vnodes = append(reqItem.replicaInfo.orphan_vnodes, replica)
 			continue
+		}
+	}
+}
+
+func (dt *DTable) selfCheck() {
+	//check for orphaned keys
+	for _, vn_table := range dt.table {
+	ITEM_LOOP:
+		for _, item := range vn_table {
+			if len(item.replicaInfo.orphan_vnodes) == 0 {
+				continue ITEM_LOOP
+			}
+			item.lock.Lock()
+			new_orphans := make([]*dendrite.Vnode, 0)
+			for _, orphan_vnode := range item.replicaInfo.orphan_vnodes {
+				if orphan_vnode == nil {
+					continue
+				}
+				// maybe it was fixed already by another process
+				fixed := false
+				for _, replica := range item.replicaInfo.vnodes {
+					if replica == nil {
+						continue
+					}
+					if bytes.Compare(orphan_vnode.Id, replica.Id) == 0 {
+						fixed = true
+					}
+				}
+				if !fixed {
+					if err := dt.remoteClearReplica(orphan_vnode, item, false); err != nil {
+						// attempt to clear orphan'ed item failed
+						new_orphans = append(new_orphans, orphan_vnode)
+					}
+				}
+			}
+			item.replicaInfo.orphan_vnodes = new_orphans
+			item.lock.Unlock()
+		}
+	}
+	//check for demoted keys
+	for _, demoted_table := range dt.demoted_table {
+		for _, demoted_item := range demoted_table {
+			if demoted_item.demoted_ts.Add(time.Minute * 3).Before(time.Now()) {
+				// new master did not process this item to the end when we demoted the key
+				// lets see if we can lookup the key
+				val, err := dt.NewQuery().Get([]byte(demoted_item.item.keyHashString()))
+				if err != nil {
+					dt.Logf(LogInfo, "selfCheck() tried to check demoted key: %s, but Get() failed: %s\n", demoted_item.item.keyHashString(), err.Error())
+					continue
+				}
+				if val == nil {
+					dt.Logf(LogInfo, "selfCheck() found old demoted key: %s. Restoring it now...", demoted_item.item.keyHashString())
+					err = dt.NewQuery().Set(demoted_item.item.Key, demoted_item.item.Val)
+					if err != nil {
+						dt.Logf(LogInfo, "selfCheck() failed while restoring demoted key %s. Err: %s\n", demoted_item.item.keyHashString(), err.Error())
+						continue
+					}
+					delete(demoted_table, demoted_item.item.keyHashString())
+					dt.Logf(LogInfo, "selfCheck() restored demoted key: %s\n", demoted_item.item.keyHashString())
+				}
+			}
 		}
 	}
 }

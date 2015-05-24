@@ -77,8 +77,3 @@ func (dt *DTable) replayEvent(event *dendrite.EventCtx) {
 	time.Sleep(5 * time.Second)
 	dt.EmitEvent(event)
 }
-
-func (dt *DTable) selfCheck() {
-	//check for orphaned keys
-	//check for demoted keys
-}

@@ -115,7 +115,7 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DT
 		confLogLevel:  level,
 		event_c:       make(chan *dendrite.EventCtx),
 		dtable_c:      make(chan *dtableEvent),
-		selfcheck_t:   time.NewTicker(10 * time.Second),
+		selfcheck_t:   time.NewTicker(10 * time.Minute),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
