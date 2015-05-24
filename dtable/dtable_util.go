@@ -104,6 +104,7 @@ func (item *kvItem) dup() *kvItem {
 	new_item := new(kvItem)
 	new_item.timestamp = item.timestamp
 	new_item.commited = item.commited
+	new_item.lock = item.lock
 
 	new_item.Key = make([]byte, len(item.Key))
 	copy(new_item.Key, item.Key)

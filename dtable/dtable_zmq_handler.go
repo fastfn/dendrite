@@ -145,6 +145,7 @@ func (dt *DTable) zmq_set_handler(request *dendrite.ChordMsg, w chan *dendrite.C
 func (dt *DTable) zmq_setReplica_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTableSetItem)
 	reqItem := new(kvItem)
+	reqItem.lock = new(sync.Mutex)
 	reqItem.from_protobuf(pbMsg.GetItem())
 	dest := dendrite.VnodeFromProtobuf(pbMsg.GetDest())
 	dest_key_str := fmt.Sprintf("%x", dest.Id)
@@ -274,6 +275,7 @@ func (dt *DTable) zmq_clearreplica_handler(request *dendrite.ChordMsg, w chan *d
 func (dt *DTable) zmq_promoteKey_handler(request *dendrite.ChordMsg, w chan *dendrite.ChordMsg) {
 	pbMsg := request.TransportMsg.(PBDTablePromoteKey)
 	reqItem := new(kvItem)
+	reqItem.lock = new(sync.Mutex)
 	reqItem.from_protobuf(pbMsg.GetItem())
 
 	// send out the event to delegator

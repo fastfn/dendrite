@@ -100,3 +100,28 @@ func (q *Query) Set(key, val []byte) error {
 	err = <-wait
 	return err
 }
+
+type KeyIterator interface {
+	Next() bool
+	Value() []byte
+	Stop()
+}
+type keyIterator struct {
+	Keys          chan []byte
+	dt            *DTable
+	clientStopped bool
+	loopStopped   bool
+	current_key   []byte
+}
+
+func (q *Query) GetLocalKeys() [][]byte {
+	rv := make([][]byte, 0)
+	for _, table := range q.dt.table {
+		for _, item := range table {
+			copy_key := make([]byte, len(item.Key))
+			copy(copy_key, item.Key)
+			rv = append(rv, copy_key)
+		}
+	}
+	return rv
+}
