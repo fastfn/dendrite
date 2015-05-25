@@ -38,13 +38,13 @@ can be used to capture chord events that dendrite emits:
 
 
 ## Usage
-'''
+```
 import "github.com/fastfn/dendrite"
 import "github.com/fastfn/dendrite/dtable"
-'''
+```
 
 ### Bootstrap the cluster (first node)
-'''
+```
 // Initialize ZMQTransport with timeout set to 5 seconds
 transport, err := dendrite.InitZMQTransport("127.0.0.1:5000", 5*time.Second)
 if err != nil {
@@ -57,7 +57,7 @@ if err != nil {
 	panic(err)
 }
 table = dtable.Init(ring, transport, dtable.LogInfo)
-'''
+```
 
 ### Joining the cluster
 
