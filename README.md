@@ -1,6 +1,6 @@
 # Dendrite
 
-Package dendrite implements a distributed hash table (DTH) based on Chord Protocol.
+Dendrite is a Go package that implements distributed hash table (DTH) based on Chord Protocol.
 Included sub-package 'dtable' is built on top of dendrite and implements
 distributed in-memory key/value database, with replication and failover support,
 with query interface to Get() or Set() items with different consistency levels.
@@ -32,8 +32,36 @@ can be used to capture chord events that dendrite emits:
 - EvReplicasChanged
 
 
-## Usage
+## Documentation
+- (http://godoc.org/github.com/fastfn/dendrite)
+- (http://godoc.org/github.com/fastfn/dendrite/dtable)
 
+
+## Usage
+'''
+import "github.com/fastfn/dendrite"
+import "github.com/fastfn/dendrite/dtable"
+...
+
+### Bootstrap the cluster (first node)
+'''
+// Initialize ZMQTransport with timeout set to 5 seconds
+transport, err := dendrite.InitZMQTransport("127.0.0.1:5000", 5*time.Second)
+if err != nil {
+	panic(err)
+	return
+}
+config := dendrite.DefaultConfig("127.0.0.1:5000")
+ring, err = dendrite.CreateRing(config, transport)
+if err != nil {
+	panic(err)
+}
+table = dtable.Init(ring, transport, dtable.LogInfo)
+'''
+
+### Joining the cluster
+
+### DTable Query examples
 
 ## Todo
 - dtable: support SetMulti() and GetMulti() on public interface
