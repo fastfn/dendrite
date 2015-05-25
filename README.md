@@ -33,15 +33,15 @@ can be used to capture chord events that dendrite emits:
 
 
 ## Documentation
-- (http://godoc.org/github.com/fastfn/dendrite)
-- (http://godoc.org/github.com/fastfn/dendrite/dtable)
+- http://godoc.org/github.com/fastfn/dendrite
+- http://godoc.org/github.com/fastfn/dendrite/dtable
 
 
 ## Usage
 '''
 import "github.com/fastfn/dendrite"
 import "github.com/fastfn/dendrite/dtable"
-...
+'''
 
 ### Bootstrap the cluster (first node)
 '''
