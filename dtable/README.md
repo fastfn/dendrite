@@ -1,6 +1,6 @@
 # Dendrite
 
-Dendrite is a Go package that implements distributed hash table (DTH) based on Chord Protocol.
+Dendrite is a Go package that implements distributed hash table (DHT) based on Chord Protocol.
 Included sub-package 'dtable' is built on top of dendrite and implements
 distributed in-memory key/value database, with replication and failover support,
 with query interface to Get() or Set() items with different consistency levels.
@@ -14,7 +14,7 @@ Use consul (consul.io) or something else for that purpose.
 
 Chord protocol defines ring stabilization. In dendrite, stabilization period is configurable.
 
-Node to node (network) communication is built on top of TCP over ZeroMQ sockets for speed, clustering
+Node to node (network) communication is built on top of ZeroMQ sockets over TCP for speed, clustering
 and reliability. Dendrite starts configurable number of goroutines (default: 10) for load balanced
 serving of remote requests, but scales that number up and down depending on the load (aka prefork model).
 
