@@ -138,6 +138,7 @@ const (
 	LogDebug LogLevel = 2
 )
 
+// Logf wraps log.Printf with additional LogLevel.
 func (dt *DTable) Logf(level LogLevel, format string, v ...interface{}) {
 	if level == LogNull {
 		return
@@ -156,6 +157,7 @@ func (dt *DTable) Logf(level LogLevel, format string, v ...interface{}) {
 	}
 }
 
+// Logln wraps log.Println with additional LogLevel.
 func (dt *DTable) Logln(level LogLevel, v ...interface{}) {
 	if level == LogNull {
 		return

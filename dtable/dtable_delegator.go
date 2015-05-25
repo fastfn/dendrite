@@ -1,7 +1,6 @@
 package dtable
 
 import (
-	//"fmt"
 	"github.com/fastfn/dendrite"
 	"time"
 )

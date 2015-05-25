@@ -15,7 +15,16 @@ const (
 	qSet queryType = 1
 )
 
-type Query struct {
+// Query is dtable's native interface for doing data operations.
+type Query interface {
+	Consistency(int) Query
+	Get([]byte) (*KVItem, error)
+	Set([]byte, []byte) error // (key, val)
+	GetLocalKeys() [][]byte
+}
+
+// Query defines a dtable query.
+type query struct {
 	dt      *DTable
 	qType   queryType
 	minAcks int
@@ -23,23 +32,30 @@ type Query struct {
 	err     error
 }
 
-func (dt *DTable) NewQuery() *Query {
-	return &Query{
+// NewQuery returns Query.
+func (dt *DTable) NewQuery() Query {
+	return &query{
 		dt:      dt,
 		qType:   -1,
 		minAcks: 1,
 	}
 }
 
-// we always do 1 write
-func (q *Query) Consistency(n int) *Query {
+// Consistency is used prior to Set() to request minimum writes before operation returns success.
+// If dtable runs with 2 replicas, user may request 2 writes (primary + 1 replica) and let dtable
+// handle final write in the background. If requested value is larger than configured dendrite replicas,
+// value is reset to 1. Default is 1.
+func (q *query) Consistency(n int) Query {
 	if n >= 1 && n <= q.dt.ring.Replicas()+1 {
 		q.minAcks = n
 	}
 	return q
 }
 
-func (q *Query) Get(key []byte) (*KVItem, error) {
+// Get returns *KVItem for a key. If key is not found on this node, but node holds key replica, replica is returned.
+// If key is not found on this node, and node does not hold replica, request is forwarded to the node responsible
+// for this key. *KVItem is nil if key was not found, and error is set if there was an error during request.
+func (q *query) Get(key []byte) (*KVItem, error) {
 	if key == nil || len(key) == 0 {
 		return nil, fmt.Errorf("key can not be nil or empty")
 	}
@@ -58,7 +74,8 @@ func (q *Query) Get(key []byte) (*KVItem, error) {
 	return &item.KVItem, nil
 }
 
-func (q *Query) Set(key, val []byte) error {
+// Set writes to dtable.
+func (q *query) Set(key, val []byte) error {
 	if key == nil || len(key) == 0 {
 		return fmt.Errorf("key can not be nil or empty")
 	}
@@ -101,20 +118,8 @@ func (q *Query) Set(key, val []byte) error {
 	return err
 }
 
-type KeyIterator interface {
-	Next() bool
-	Value() []byte
-	Stop()
-}
-type keyIterator struct {
-	Keys          chan []byte
-	dt            *DTable
-	clientStopped bool
-	loopStopped   bool
-	current_key   []byte
-}
-
-func (q *Query) GetLocalKeys() [][]byte {
+// GetLocalKeys returns the list of keys that are stored on this node (across all vnodes).
+func (q *query) GetLocalKeys() [][]byte {
 	rv := make([][]byte, 0)
 	for _, table := range q.dt.table {
 		for _, item := range table {

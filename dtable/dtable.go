@@ -1,7 +1,6 @@
 package dtable
 
 import (
-	//"bytes"
 	"fmt"
 	"github.com/fastfn/dendrite"
 	"github.com/golang/protobuf/proto"
@@ -12,6 +11,7 @@ import (
 type replicaState int
 type dtableEventType int
 
+// KVItem is basic database item struct.
 type KVItem struct {
 	Key []byte
 	Val []byte
@@ -48,11 +48,12 @@ type dtableEvent struct {
 type itemMap map[string]*kvItem
 type demotedItemMap map[string]*demotedKvItem
 
+// DTable is main dtable struct.
 type DTable struct {
 	// base structures
-	table         map[string]itemMap
-	rtable        map[string]itemMap // rtable is table of replicas
-	demoted_table map[string]demotedItemMap
+	table         map[string]itemMap        // primary k/v table
+	rtable        map[string]itemMap        // rtable is table of replicas
+	demoted_table map[string]demotedItemMap // demoted items
 	ring          *dendrite.Ring
 	transport     dendrite.Transport
 	confLogLevel  LogLevel
@@ -105,6 +106,7 @@ func (m itemMap) put(item *kvItem) error {
 	return nil
 }
 
+// Init initializes dtable and registers with dendrite as a TransportHook and DelegateHook.
 func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DTable {
 	dt := &DTable{
 		table:         make(map[string]itemMap),
@@ -133,11 +135,12 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DT
 	return dt
 }
 
+// EmitEvent implements dendrite's DelegateHook.
 func (dt *DTable) EmitEvent(ctx *dendrite.EventCtx) {
 	dt.event_c <- ctx
 }
 
-// Implement dendrite TransportHook
+// Decode implements dendrite's TransportHook.
 func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 	data_len := len(data)
 	if data_len == 0 {
@@ -231,7 +234,7 @@ func (dt *DTable) Decode(data []byte) (*dendrite.ChordMsg, error) {
 	return cm, nil
 }
 
-// Get() returns value for a given key
+// get returns value for a given key
 func (dt *DTable) get(reqItem *kvItem) (*kvItem, error) {
 	succs, err := dt.ring.Lookup(3, reqItem.keyHash)
 	if err != nil {
@@ -420,6 +423,7 @@ func (dt *DTable) rollback(vn *dendrite.Vnode, item *kvItem) {
 	delete(dt.table[vn.String()], item.keyHashString())
 }
 
+// DumpStr dumps dtable keys per vnode on stdout. Mostly used for debugging.
 func (dt *DTable) DumpStr() {
 	fmt.Println("Dumping DTABLE")
 	for vn_id, vn_table := range dt.table {
