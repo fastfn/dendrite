@@ -1,6 +1,6 @@
 package dtable
 
-import proto "code.google.com/p/goprotobuf/proto"
+import proto "github.com/golang/protobuf/proto"
 import math "math"
 import dendrite "github.com/fastfn/dendrite"
 
