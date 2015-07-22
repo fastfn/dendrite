@@ -151,9 +151,17 @@ func (dt *DTable) Logf(level LogLevel, format string, v ...interface{}) {
 	}
 
 	if dt.confLogLevel == LogDebug {
-		log.Printf(new_format, v...)
+		if dt.ring.Logger != nil {
+			dt.ring.Logger.Printf(new_format, v...)
+		} else {
+			log.Printf(new_format, v...)
+		}
 	} else if dt.confLogLevel == LogInfo && level == LogInfo {
-		log.Printf(new_format, v...)
+		if dt.ring.Logger != nil {
+			dt.ring.Logger.Printf(new_format, v...)
+		} else {
+			log.Printf(new_format, v...)
+		}
 	}
 }
 
@@ -171,9 +179,18 @@ func (dt *DTable) Logln(level LogLevel, v ...interface{}) {
 	}
 	if dt.confLogLevel == LogDebug {
 		v = append([]interface{}{new_format}, v...)
-		log.Println(v...)
+		if dt.ring.Logger != nil {
+			dt.ring.Logger.Println(v...)
+		} else {
+			log.Println(v...)
+		}
+
 	} else if dt.confLogLevel == LogInfo && level == LogInfo {
 		v = append([]interface{}{new_format}, v...)
-		log.Println(v...)
+		if dt.ring.Logger != nil {
+			dt.ring.Logger.Println(v...)
+		} else {
+			log.Println(v...)
+		}
 	}
 }

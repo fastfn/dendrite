@@ -78,6 +78,7 @@ type Config struct {
 	NumSuccessors int      // number of successor to keep in self log
 	Replicas      int      // number of replicas to keep by default
 	LogLevel      LogLevel // logLevel, 0 = null, 1 = info, 2 = debug
+	Logger        *log.Logger
 }
 
 // DefaultConfig returns *Config with default values.
@@ -114,9 +115,17 @@ func (r *Ring) Logf(level LogLevel, format string, v ...interface{}) {
 	}
 
 	if r.config.LogLevel == LogDebug {
-		log.Printf(new_format, v...)
+		if r.config.Logger != nil {
+			r.config.Logger.Printf(new_format, v...)
+		} else {
+			log.Printf(new_format, v...)
+		}
 	} else if r.config.LogLevel == LogInfo && level == LogInfo {
-		log.Printf(new_format, v...)
+		if r.config.Logger != nil {
+			r.config.Logger.Printf(new_format, v...)
+		} else {
+			log.Printf(new_format, v...)
+		}
 	}
 }
 
@@ -130,10 +139,18 @@ func (r *Ring) Logln(level LogLevel, v ...interface{}) {
 	}
 	if r.config.LogLevel == LogDebug {
 		v = append([]interface{}{new_format}, v...)
-		log.Println(v...)
+		if r.config.Logger != nil {
+			r.config.Logger.Println(v...)
+		} else {
+			log.Println(v...)
+		}
 	} else if r.config.LogLevel == LogInfo && level == LogInfo {
 		v = append([]interface{}{new_format}, v...)
-		log.Println(v...)
+		if r.config.Logger != nil {
+			r.config.Logger.Println(v...)
+		} else {
+			log.Println(v...)
+		}
 	}
 }
 
@@ -145,6 +162,7 @@ type Ring struct {
 	shutdown       chan bool
 	Stabilizations int
 	delegateHooks  []DelegateHook
+	Logger         *log.Logger
 }
 
 // Less implements sort.Interface Less() - used to sort ring.vnodes.
@@ -218,6 +236,7 @@ func (r *Ring) setLocalSuccessors() {
 // init initializes the ring.
 func (r *Ring) init(config *Config, transport Transport) {
 	r.config = config
+	r.Logger = config.Logger
 	r.transport = InitLocalTransport(transport)
 	r.vnodes = make([]*localVnode, config.NumVnodes)
 	r.shutdown = make(chan bool)
