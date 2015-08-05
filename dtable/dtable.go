@@ -58,9 +58,14 @@ type DTable struct {
 	transport     dendrite.Transport
 	confLogLevel  LogLevel
 	// communication channels
-	event_c     chan *dendrite.EventCtx // dendrite sends events here
-	dtable_c    chan *dtableEvent       // internal dtable events
-	selfcheck_t *time.Ticker
+	event_c         chan *dendrite.EventCtx // dendrite sends events here
+	dtable_c        chan *dtableEvent       // internal dtable events
+	selfcheck_t     *time.Ticker
+	captureKeyHooks []CaptureKeyHook
+}
+
+type CaptureKeyHook interface {
+	CaptureKeyHandler(key []byte)
 }
 
 const (
@@ -109,15 +114,16 @@ func (m itemMap) put(item *kvItem) error {
 // Init initializes dtable and registers with dendrite as a TransportHook and DelegateHook.
 func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DTable {
 	dt := &DTable{
-		table:         make(map[string]itemMap),
-		rtable:        make(map[string]itemMap),
-		demoted_table: make(map[string]demotedItemMap),
-		ring:          ring,
-		transport:     transport,
-		confLogLevel:  level,
-		event_c:       make(chan *dendrite.EventCtx),
-		dtable_c:      make(chan *dtableEvent),
-		selfcheck_t:   time.NewTicker(10 * time.Minute),
+		table:           make(map[string]itemMap),
+		rtable:          make(map[string]itemMap),
+		demoted_table:   make(map[string]demotedItemMap),
+		ring:            ring,
+		transport:       transport,
+		confLogLevel:    level,
+		event_c:         make(chan *dendrite.EventCtx),
+		dtable_c:        make(chan *dtableEvent),
+		selfcheck_t:     time.NewTicker(10 * time.Minute),
+		captureKeyHooks: make([]CaptureKeyHook, 0),
 	}
 	// each local vnode needs to be separate key in dtable
 	for _, vnode := range ring.MyVnodes() {
@@ -138,6 +144,18 @@ func Init(ring *dendrite.Ring, transport dendrite.Transport, level LogLevel) *DT
 // EmitEvent implements dendrite's DelegateHook.
 func (dt *DTable) EmitEvent(ctx *dendrite.EventCtx) {
 	dt.event_c <- ctx
+}
+
+func (dt *DTable) RegisterCaptureKeyHook(hook CaptureKeyHook) {
+	dt.captureKeyHooks = append(dt.captureKeyHooks, hook)
+}
+
+func (dt *DTable) callHooks(item *kvItem) {
+	if item.Val != nil {
+		for _, hook := range dt.captureKeyHooks {
+			hook.CaptureKeyHandler(item.Key)
+		}
+	}
 }
 
 // Decode implements dendrite's TransportHook.
@@ -323,6 +341,7 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 			item.replicaInfo.state = replicaStable
 			item.commited = true
 			done <- nil
+			dt.callHooks(item)
 			return
 		}
 		item.commited = true
@@ -409,6 +428,8 @@ func (dt *DTable) set(vn *dendrite.Vnode, item *kvItem, minAcks int, done chan e
 	}
 	item.replicaInfo.state = target_state
 	item.commited = true
+	dt.callHooks(item)
+
 }
 
 // rollback is called on failed set()
