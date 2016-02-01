@@ -43,7 +43,7 @@ import "github.com/fastfn/dendrite"
 import "github.com/fastfn/dendrite/dtable"
 ...
 // Initialize ZMQTransport with timeout set to 5 seconds
-transport, err := dendrite.InitZMQTransport("127.0.0.1:5000", 5*time.Second)
+transport, err := dendrite.InitZMQTransport("127.0.0.1:5000", 5*time.Second, nil)
 if err != nil {
 	panic(err)
 	return
